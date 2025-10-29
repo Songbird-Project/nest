@@ -1,6 +1,7 @@
 package subcommands
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -12,11 +13,15 @@ import (
 // Find packages on the AUR and main repos
 
 type SearchCmd struct {
-	Name      string `arg:"positional"`
-	MaxOutput int    `arg:"-m,--max-out" help:"max number of packages to list"`
+	Name      string   `arg:"positional"`
+	Repos     []string `arg:"--repos" help:"only search in the given repos"`
+	MaxOutput int      `arg:"-m,--max-out" help:"max number of packages to list for each repo"`
 }
 
-func SearchPkg(alpmHandle *alpm.Handle, searchTerms string) ([]core.Package, error) {
+func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error) {
+	searchTerms := args.Name
+	searchRepos := args.Repos
+
 	packageList := []core.Package{}
 	searchMainRepos := exec.Command("pacman", append([]string{"-Ss"}, strings.Split(searchTerms, " ")...)...)
 	cmdOutput, err := searchMainRepos.Output()
@@ -50,8 +55,26 @@ func SearchPkg(alpmHandle *alpm.Handle, searchTerms string) ([]core.Package, err
 			Description: desc,
 			Version:     version,
 		}
-		packageList = append(packageList, pkg)
+
+		if strings.Contains(strings.Join(searchRepos, " "), pkg.Repo) {
+			packageList = append(packageList, pkg)
+		}
 	}
 
 	return packageList, nil
+}
+
+func PrintPkgs(pkgs []core.Package, maxOutput int) {
+	lim := len(pkgs)
+	if maxOutput > 0 && maxOutput < lim {
+		lim = maxOutput
+	}
+
+	for i := 0; i < lim; i++ {
+		fmt.Printf(" - %s\n", pkgs[i].Name)
+	}
+
+	if lim < len(pkgs) {
+		fmt.Printf("  %d packages have been hidden", len(pkgs)-lim)
+	}
 }

@@ -25,7 +25,7 @@ func main() {
 
 	switch {
 	case args.Search != nil:
-		pkgList, err := subcommands.SearchPkg(handler, args.Search.Name)
+		pkgList, err := subcommands.SearchPkg(handler, args.Search)
 		if err != nil {
 			fmt.Printf("%s\n", err)
 			os.Exit(1)
@@ -33,12 +33,12 @@ func main() {
 
 		organisedPkgs := core.OrganisePkgsByRepo(pkgList)
 		repoColors := core.GetRepoColors()
+		sortedRepos := core.SortRepos(organisedPkgs)
 
-		for repo, pkgs := range organisedPkgs {
-			fmt.Printf("%s:\n", core.ColoriseRepo(repo, repoColors))
-			for i, pkg := range pkgs {
-				fmt.Printf(" %d. %s\n", i+1, pkg.Name)
-			}
+		for _, repo := range sortedRepos {
+			pkgs := organisedPkgs[repo]
+			fmt.Printf("%s:\n", core.ColoriseByRepo(repo, repoColors))
+			subcommands.PrintPkgs(pkgs, args.Search.MaxOutput)
 			fmt.Println()
 		}
 	}
