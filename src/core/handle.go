@@ -1,6 +1,7 @@
 package core
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/Jguer/go-alpm/v2"
@@ -36,7 +37,7 @@ func GetRepoColors() map[string]func(...any) string {
 	}
 }
 
-func ColoriseRepo(repo string, repoColors map[string]func(...any) string) string {
+func ColoriseByRepo(repo string, repoColors map[string]func(...any) string) string {
 	repoLower := strings.ToLower(repo)
 
 	if repoLower == "aur" {
@@ -50,4 +51,32 @@ func ColoriseRepo(repo string, repoColors map[string]func(...any) string) string
 	}
 
 	return color.New(color.FgMagenta).SprintFunc()(repo)
+}
+
+func SortRepos(organisedPkgs map[string][]Package) []string {
+	order := []string{"core", "extra", "multilib", "testing", "aur"}
+	result := []string{}
+	seen := make(map[string]bool)
+
+	for _, repoName := range order {
+		for repo := range organisedPkgs {
+			if strings.ToLower(repo) == repoName {
+				result = append(result, repo)
+				seen[repo] = true
+			}
+		}
+	}
+
+	remainingRepos := []string{}
+	for repo := range organisedPkgs {
+		if !seen[repo] {
+			remainingRepos = append(remainingRepos, repo)
+		}
+	}
+
+	sort.Strings(remainingRepos)
+
+	result = append(result, remainingRepos...)
+
+	return result
 }
