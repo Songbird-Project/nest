@@ -2,11 +2,13 @@ package subcommands
 
 import (
 	"fmt"
+	"image/color"
 	"os/exec"
 	"strings"
 
 	"github.com/Jguer/go-alpm/v2"
 	"github.com/Songbird-Project/nest/core"
+	"github.com/charmbracelet/lipgloss/v2"
 )
 
 // Search:
@@ -56,7 +58,7 @@ func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error)
 			Version:     version,
 		}
 
-		if strings.Contains(strings.Join(searchRepos, " "), pkg.Repo) {
+		if strings.Contains(strings.Join(searchRepos, " "), pkg.Repo) || len(searchRepos) == 0 {
 			packageList = append(packageList, pkg)
 		}
 	}
@@ -64,17 +66,34 @@ func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error)
 	return packageList, nil
 }
 
-func PrintPkgs(pkgs []core.Package, maxOutput int) {
+func FormatPkgs(pkgs []core.Package, maxOutput int, repoColors map[string]color.Color) string {
 	lim := len(pkgs)
 	if maxOutput > 0 && maxOutput < lim {
 		lim = maxOutput
 	}
 
+	maxNumberWidth := len(fmt.Sprintf("%d.", lim))
+
+	infoString := ""
 	for i := 0; i < lim; i++ {
-		fmt.Printf(" - %s\n", pkgs[i].Name)
+		repoColor := core.GetStyleForRepo(pkgs[i].Repo, repoColors)
+
+		pkgNumber := fmt.Sprintf("%d.", i+1)
+		paddedPkg := fmt.Sprintf("%-*s", maxNumberWidth, pkgNumber)
+		repoStyle := lipgloss.NewStyle().Foreground(repoColor)
+		formattedPkgNumber := repoStyle.Render(paddedPkg)
+
+		infoString += fmt.Sprintf("%s %s", formattedPkgNumber, pkgs[i].Name)
+		if i != lim-1 {
+			infoString += "\n"
+		}
 	}
 
 	if lim < len(pkgs) {
-		fmt.Printf("  %d packages have been hidden", len(pkgs)-lim)
+		subtext := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+		pkgsHiddenText := fmt.Sprintf("\n%d packages have been hidden", len(pkgs)-lim)
+		infoString += subtext.Render(pkgsHiddenText)
 	}
+
+	return infoString
 }

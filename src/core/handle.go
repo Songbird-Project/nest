@@ -1,11 +1,12 @@
 package core
 
 import (
+	"image/color"
 	"sort"
 	"strings"
 
 	"github.com/Jguer/go-alpm/v2"
-	"github.com/fatih/color"
+	"github.com/charmbracelet/lipgloss/v2"
 )
 
 func AlpmInit() (*alpm.Handle, error) {
@@ -27,30 +28,34 @@ func OrganisePkgsByRepo(packages []Package) map[string][]Package {
 	return repoMap
 }
 
-func GetRepoColors() map[string]func(...any) string {
-	return map[string]func(...any) string{
-		"core":     color.New(color.FgGreen).SprintFunc(),
-		"extra":    color.New(color.FgYellow).SprintFunc(),
-		"multilib": color.New(color.FgBlue).SprintFunc(),
-		"testing":  color.New(color.FgRed).SprintFunc(),
-		"aur":      color.New(color.FgCyan).SprintFunc(),
+func GetRepoColors() map[string]color.Color {
+	return map[string]color.Color{
+		"core":     lipgloss.Color("10"),
+		"extra":    lipgloss.Color("11"),
+		"multilib": lipgloss.Color("12"),
+		"testing":  lipgloss.Color("9"),
+		"aur":      lipgloss.Color("14"),
 	}
 }
 
-func ColoriseByRepo(repo string, repoColors map[string]func(...any) string) string {
+func GetStyleForRepo(repo string, repoColors map[string]color.Color) color.Color {
 	repoLower := strings.ToLower(repo)
 
 	if repoLower == "aur" {
-		return repoColors["aur"](repo)
+		return repoColors["aur"]
 	}
 
-	for key, colorFunc := range repoColors {
+	for key, style := range repoColors {
 		if key != "aur" && strings.Contains(repoLower, key) {
-			return colorFunc(repo)
+			return style
 		}
 	}
 
-	return color.New(color.FgMagenta).SprintFunc()(repo)
+	return lipgloss.Color("13")
+}
+
+func ColoriseByRepo(repo string, repoColors map[string]color.Color) string {
+	return lipgloss.NewStyle().Foreground(GetStyleForRepo(repo, repoColors)).Bold(true).Render(repo)
 }
 
 func SortRepos(organisedPkgs map[string][]Package) []string {

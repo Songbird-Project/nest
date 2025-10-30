@@ -7,6 +7,7 @@ import (
 	"github.com/Songbird-Project/nest/core"
 	"github.com/Songbird-Project/nest/subcommands"
 	"github.com/alexflint/go-arg"
+	"github.com/charmbracelet/lipgloss/v2"
 )
 
 var args struct {
@@ -20,6 +21,12 @@ func main() {
 		fmt.Printf("%s\n", err)
 		os.Exit(1)
 	}
+
+	borderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		Width(70).
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	arg.MustParse(&args)
 
@@ -37,9 +44,13 @@ func main() {
 
 		for _, repo := range sortedRepos {
 			pkgs := organisedPkgs[repo]
-			fmt.Printf("%s:\n", core.ColoriseByRepo(repo, repoColors))
-			subcommands.PrintPkgs(pkgs, args.Search.MaxOutput)
-			fmt.Println()
+			borderStyle = borderStyle.BorderForeground(core.GetStyleForRepo(repo, repoColors))
+
+			colorisedRepoName := fmt.Sprintf("%s:\n", core.ColoriseByRepo(repo, repoColors))
+			formattedPkgList := subcommands.FormatPkgs(pkgs, args.Search.MaxOutput, repoColors)
+
+			repoPkgsString := colorisedRepoName + formattedPkgList
+			fmt.Println(borderStyle.Render(repoPkgsString))
 		}
 	}
 }
