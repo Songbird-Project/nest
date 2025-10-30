@@ -21,8 +21,17 @@ jobs:
         with:
           fetch-depth: 0
       
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory /__w/$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)/$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)
+      
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory /__w/$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)/$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)
+      
       - name: Build
         run: go build -C src -o ../build/app
+      
+      - name: Run tests
+        run: go test -C src ./...
       
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
