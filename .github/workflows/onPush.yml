@@ -1,0 +1,85 @@
+name: Build and Release
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      
+      - name: Build
+        run: go build -C src -o ../build/app
+      
+      - name: Run tests
+        run: go test -C src ./...
+      
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: build/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: build/
+      
+      - name: Get version
+        id: version
+        run: |
+          # Generate version from date and short SHA
+          echo "tag=v$(date +'%Y.%m.%d')-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+      
+      - name: Create changelog from commit
+        id: changelog
+        run: |
+          # Get the commit message (first line as title, rest as body)
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b" ${{ github.sha }})
+          
+          # Save to file for release
+          echo "$COMMIT_MSG" > CHANGELOG.md
+          
+          # Also set as output (escape for GitHub Actions)
+          {
+            echo 'notes<<EOF'
+            echo "$COMMIT_MSG"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          body: ${{ steps.changelog.outputs.notes }}
+          files: |
+            build/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
