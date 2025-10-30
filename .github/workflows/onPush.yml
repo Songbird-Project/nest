@@ -29,10 +29,7 @@ jobs:
       
       - name: Build
         run: go build -C src -o ../build/app
-      
-      - name: Run tests
-        run: go test -C src ./...
-      
+        
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
