@@ -13,6 +13,7 @@ import (
 var args struct {
 	// Subcommands
 	Search *subcommands.SearchCmd `arg:"subcommand:search"`
+	Info   *subcommands.InfoCmd   `arg:"subcommand:info"`
 }
 
 func main() {
@@ -47,10 +48,18 @@ func main() {
 			borderStyle = borderStyle.BorderForeground(core.GetStyleForRepo(repo, repoColors))
 
 			colorisedRepoName := fmt.Sprintf("%s:\n", core.ColoriseByRepo(repo, repoColors))
-			formattedPkgList := subcommands.FormatPkgs(pkgs, args.Search.MaxOutput, repoColors)
+			formattedPkgList := subcommands.FormatPkgs(pkgs, args.Search.MaxOutput)
 
 			repoPkgsString := colorisedRepoName + formattedPkgList
 			fmt.Println(borderStyle.Render(repoPkgsString))
 		}
+	case args.Info != nil:
+		pkgInfo, err := subcommands.PkgInfo(handler, args.Info)
+		if err != nil {
+			fmt.Printf("%s\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println(pkgInfo)
 	}
 }
