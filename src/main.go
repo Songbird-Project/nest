@@ -10,10 +10,15 @@ import (
 	"github.com/charmbracelet/lipgloss/v2"
 )
 
+const nestVersion = "0.0.1"
+
 var args struct {
+	// Top Level Flags
+	Version bool `arg:"-V,--version" help:"print the current nest version and exit"`
+
 	// Subcommands
-	Search *subcommands.SearchCmd `arg:"subcommand:search"`
-	Info   *subcommands.InfoCmd   `arg:"subcommand:info"`
+	Search *subcommands.SearchCmd `arg:"subcommand:search" help:"search for a package"`
+	Info   *subcommands.InfoCmd   `arg:"subcommand:info" help:"retrieve the info of a package"`
 }
 
 func main() {
@@ -30,6 +35,11 @@ func main() {
 		PaddingRight(1)
 
 	arg.MustParse(&args)
+
+	if args.Version {
+		fmt.Printf("nest v%s\n", nestVersion)
+		return
+	}
 
 	switch {
 	case args.Search != nil:
