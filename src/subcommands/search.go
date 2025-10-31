@@ -68,10 +68,10 @@ func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error)
 
 	aurSearch, err := aur.Search(searchTerms)
 	if err == nil {
-		aurConcatSearch, err := aur.Search(strings.ReplaceAll(searchTerms, " ", "-"))
-		if err == nil {
-			aurSearch = append(aurSearch, aurConcatSearch...)
-		}
+		// aurConcatSearch, err := aur.Search(strings.ReplaceAll(searchTerms, " ", "-"))
+		// if err == nil {
+		// aurSearch = append(aurSearch, aurConcatSearch...)
+		// }
 
 		seen := map[string]bool{}
 		for _, pack := range aurSearch {
