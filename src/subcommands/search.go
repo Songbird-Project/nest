@@ -2,7 +2,6 @@ package subcommands
 
 import (
 	"fmt"
-	"image/color"
 	"os/exec"
 	"strings"
 
@@ -66,7 +65,7 @@ func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error)
 	return packageList, nil
 }
 
-func FormatPkgs(pkgs []core.Package, maxOutput int, repoColors map[string]color.Color) string {
+func FormatPkgs(pkgs []core.Package, maxOutput int) string {
 	lim := len(pkgs)
 	if maxOutput > 0 && maxOutput < lim {
 		lim = maxOutput
@@ -76,7 +75,7 @@ func FormatPkgs(pkgs []core.Package, maxOutput int, repoColors map[string]color.
 
 	infoString := ""
 	for i := 0; i < lim; i++ {
-		repoColor := core.GetStyleForRepo(pkgs[i].Repo, repoColors)
+		repoColor := core.GetStyleForRepo(pkgs[i].Repo, core.GetRepoColors())
 
 		pkgNumber := fmt.Sprintf("%d.", i+1)
 		paddedPkg := fmt.Sprintf("%-*s", maxNumberWidth, pkgNumber)
