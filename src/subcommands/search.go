@@ -8,6 +8,7 @@ import (
 	"github.com/Jguer/go-alpm/v2"
 	"github.com/Songbird-Project/nest/core"
 	"github.com/charmbracelet/lipgloss/v2"
+	"github.com/mikkeloscar/aur"
 )
 
 // Search:
@@ -23,11 +24,11 @@ func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error)
 	searchTerms := args.Name
 	searchRepos := args.Repos
 
-	packageList := []core.Package{}
+	pkgList := []core.Package{}
 	searchMainRepos := exec.Command("pacman", append([]string{"-Ss"}, strings.Split(searchTerms, " ")...)...)
 	cmdOutput, err := searchMainRepos.Output()
 	if err != nil {
-		return packageList, err
+		return pkgList, err
 	}
 
 	pkgInfo := strings.Split(string(cmdOutput), "\n")
@@ -58,11 +59,51 @@ func SearchPkg(alpmHandle *alpm.Handle, args *SearchCmd) ([]core.Package, error)
 		}
 
 		if strings.Contains(strings.Join(searchRepos, " "), pkg.Repo) || len(searchRepos) == 0 {
-			packageList = append(packageList, pkg)
+			pkgList = append(pkgList, pkg)
 		}
 	}
 
-	return packageList, nil
+	aurQuery := strings.Split(strings.ToLower(searchTerms), " ")
+	aurPkgs := []aur.Pkg{}
+
+	aurSearch, err := aur.Search(searchTerms)
+	if err == nil {
+		aurConcatSearch, err := aur.Search(strings.ReplaceAll(searchTerms, " ", "-"))
+		if err == nil {
+			aurSearch = append(aurSearch, aurConcatSearch...)
+		}
+
+		seen := map[string]bool{}
+		for _, pack := range aurSearch {
+			matched := true
+			for _, q := range aurQuery {
+				if !((strings.Contains(strings.ToLower(pack.Name), q) ||
+					strings.Contains(strings.ToLower(pack.Description), q)) &&
+					matched) {
+					matched = false
+				}
+			}
+			if matched && !seen[pack.Name] {
+				seen[pack.Name] = true
+				aurPkgs = append(aurPkgs, pack)
+			}
+		}
+	}
+
+	for _, pkgInfo := range aurPkgs {
+		pkg := core.Package{
+			Name:        pkgInfo.Name,
+			Repo:        "aur",
+			Description: pkgInfo.Description,
+			Version:     pkgInfo.Version,
+		}
+
+		if strings.Contains(strings.Join(searchRepos, " "), "aur") || len(searchRepos) == 0 {
+			pkgList = append(pkgList, pkg)
+		}
+	}
+
+	return pkgList, nil
 }
 
 func FormatPkgs(pkgs []core.Package, maxOutput int) string {
