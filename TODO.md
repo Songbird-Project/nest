@@ -5,14 +5,15 @@
 > [!NOTE]
 > These are required for a stable release.
 
-| Task    | Status      |
-|---------|-------------|
-| Search  | Complete        |
-| Info    | Complete        |
-| Build   | Not Started |
-| Update  | Not Started |
-| Install | Not Started |
-| Proper error handling | Partial Implementation |
+| Task    | Status      | Priority |
+|---------|-------------|----------|
+| Python language support | Not Started | Very High |
+| Build command   | Not Started | High |
+| Update command | Not Started | High |
+| Install command| Not Started | High |
+| Proper error handling | Partial Implementation | Medium |
+| Search command | Complete        | High |
+| Info command   | Complete        | High |
 
 ## Additional features
 
@@ -21,5 +22,7 @@
 
 | Task                              | Status      |
 |-----------------------------------|-------------|
+| Lua language support              | Not Started |
+| Bash language support             | Not Started |
 | Branch command                    | Not Started |
 | Remove `alpm` and `pacman` dependency | Not Started |
