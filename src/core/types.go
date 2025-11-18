@@ -18,3 +18,20 @@ type Package struct {
 	CurrentBuildLocation string
 	Installed            bool
 }
+
+type Repo struct {
+	Server   string
+	SigLevel string
+	Include  string
+}
+
+type NestConfig struct {
+	// Style
+	Color bool
+
+	// Generation
+	CompressOld bool
+
+	// Other (more categorisation with more options)
+	Repos []*Repo
+}
