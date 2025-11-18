@@ -7,10 +7,10 @@
 
 | Task    | Status      | Priority |
 |---------|-------------|----------|
-| Python language support | Not Started | Very High |
 | Build command   | Not Started | High |
 | Update command | Not Started | High |
 | Install command| Not Started | High |
+| Python language support | Not Started | Medium |
 | Proper error handling | Partial Implementation | Medium |
 | Search command | Complete        | High |
 | Info command   | Complete        | High |
