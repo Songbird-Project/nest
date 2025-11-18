@@ -17,8 +17,10 @@ var args struct {
 	Version bool `arg:"-V,--version" help:"print the current nest version and exit"`
 
 	// Subcommands
-	Search *subcommands.SearchCmd `arg:"subcommand:search" help:"search for a package"`
-	Info   *subcommands.InfoCmd   `arg:"subcommand:info" help:"retrieve the info of a package"`
+	Search  *subcommands.SearchCmd  `arg:"subcommand:search" help:"search for a package"`
+	Info    *subcommands.InfoCmd    `arg:"subcommand:info" help:"retrieve the info of a package"`
+	Add     *subcommands.AddCmd     `arg:"subcommand:add" help:"add the given package to the package list"`
+	Install *subcommands.InstallCmd `arg:"subcommand:install" help:"imperatively install the given package"`
 }
 
 func main() {
@@ -63,6 +65,7 @@ func main() {
 			repoPkgsString := colorisedRepoName + formattedPkgList
 			fmt.Println(borderStyle.Render(repoPkgsString))
 		}
+
 	case args.Info != nil:
 		pkgInfo, err := subcommands.PkgInfo(handler, args.Info)
 		if err != nil {
@@ -71,5 +74,7 @@ func main() {
 		}
 
 		fmt.Println(pkgInfo)
+	case args.Add != nil:
+		return
 	}
 }
