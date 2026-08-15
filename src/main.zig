@@ -58,7 +58,10 @@ pub fn main(init: std.process.Init) !void {
     defer cfg.deinit(init.gpa);
 
     for (cfg.repos) |repo| {
-        try libnest.repo.RepoConn.open(&ctx, repo);
+        libnest.repo.RepoConn.open(&ctx, repo) catch |err| switch (err) {
+            error.NoMirrors => std.process.exit(57),
+            else => return err,
+        };
     }
 
     const store_conn = try libnest.store.newConn(ctx);

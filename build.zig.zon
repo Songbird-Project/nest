@@ -9,8 +9,8 @@
             .hash = "cova-0.10.1-_OE4RzPaBAD0JKOMIrEJ8uHfz1_OXM7jpBEBocS_81gw",
         },
         .libnest = .{
-            .url = "git+https://codeberg.org/Songbird-Project/libnest#7c4eb9833828a17aa296ddabdec5812332a82ad3",
-            .hash = "libnest-0.1.0-8QxpmdueAQBNL6a4bYlQ_HaBbDmLtDPHBy9VoHxE_XX3",
+            .url = "git+https://codeberg.org/Songbird-Project/libnest#e93efb86374bb112d2cf46e7e3da54a47d86b9a8",
+            .hash = "libnest-0.1.0-8QxpmYyfAQDzJc8m02ak9uUxZQzaYK3b-cnkuW5xV_fA",
         },
     },
     .paths = .{
