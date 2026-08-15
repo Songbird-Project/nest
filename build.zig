@@ -38,11 +38,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.root_module.addImport("cova", cova.module("cova"));
-    const toml = b.dependency("toml", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("toml", toml.module("toml"));
 
     b.installArtifact(exe);
 }
