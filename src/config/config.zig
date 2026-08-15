@@ -20,10 +20,15 @@ pub const Config = struct {
     pub fn deinit(self: *Config, alloc: Allocator) void {
         for (self.repos) |repo| {
             for (repo.mirrors) |mirror| alloc.free(mirror);
+            alloc.free(repo.mirrors);
+
             alloc.free(repo.name);
             alloc.free(repo.arch);
         }
+        alloc.free(self.repos);
+
         for (self.packages) |package| alloc.free(package);
+        alloc.free(self.packages);
     }
 };
 
@@ -53,10 +58,6 @@ fn getRepo(alloc: Allocator, state: *c.lua_State, table_idx: c_int) !libnest.rep
     const arch = try lua.dupeString(alloc, state, -1);
     c.lua_settop(state, -2);
 
-    _ = c.lua_getfield(state, idx, "priority");
-    const priority: i32 = @intCast(c.lua_tointegerx(state, -1, null));
-    c.lua_settop(state, -2);
-
     _ = c.lua_getfield(state, idx, "mirrors");
     const mirrors = try lua.getStringArray(alloc, state, -1);
     c.lua_settop(state, -2);
@@ -64,7 +65,6 @@ fn getRepo(alloc: Allocator, state: *c.lua_State, table_idx: c_int) !libnest.rep
     return .{
         .name = name,
         .arch = arch,
-        .priority = priority,
         .mirrors = mirrors,
     };
 }
