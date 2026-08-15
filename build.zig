@@ -2,9 +2,7 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseSafe,
-    });
+    const optimize = b.standardOptimizeOption(.{});
 
     const lua_c = b.addTranslateC(.{
         .root_source_file = b.path("lib/lua.h"),
@@ -42,4 +40,6 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("cova", cova.module("cova"));
 
     b.installArtifact(exe);
+    b.installFile("resources/nest.lua", "usr/share/nest/nest.lua");
+    b.installFile("resources/luarc.json", "etc/nest/.luarc.json");
 }

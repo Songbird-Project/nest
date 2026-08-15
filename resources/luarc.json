@@ -1,0 +1,9 @@
+{
+  "workspace.library": [
+    "/usr/share/nest/nest.lua"
+  ],
+  "runtime.version": "Lua 5.4",
+  "diagnostics.globals": [
+    "nest"
+  ]
+}
