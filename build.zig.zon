@@ -1,0 +1,22 @@
+.{
+    .name = .nest,
+    .version = "0.1.0",
+    .fingerprint = 0xe7dbc9f7efd5d2ef,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .libnest = .{ .path = "../libs/libnest" },
+        .cova = .{
+            .url = "git+https://github.com/00JCIV00/cova?ref=zig-v0.16#62ead80ef63bfa255a31d5e121920576d25ba342",
+            .hash = "cova-0.10.1-_OE4RzPaBAD0JKOMIrEJ8uHfz1_OXM7jpBEBocS_81gw",
+        },
+        .toml = .{
+            .url = "git+https://github.com/sam701/zig-toml?ref=zig-0.16#8685923e32e8b8a795eb2715684236975a70faed",
+            .hash = "toml-0.3.0-bV14BRmKAQAWR0FT0KUKFwVJTImaFhWjSe6HfSMtNZOH",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
