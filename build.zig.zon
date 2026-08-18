@@ -4,13 +4,14 @@
     .fingerprint = 0xe7dbc9f7efd5d2ef,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        .cova = .{
-            .url = "git+https://github.com/00JCIV00/cova?ref=zig-v0.16#62ead80ef63bfa255a31d5e121920576d25ba342",
-            .hash = "cova-0.10.1-_OE4RzPaBAD0JKOMIrEJ8uHfz1_OXM7jpBEBocS_81gw",
-        },
-        .libnest = .{
-            .url = "git+https://codeberg.org/Songbird-Project/libnest#e93efb86374bb112d2cf46e7e3da54a47d86b9a8",
-            .hash = "libnest-0.1.0-8QxpmYyfAQDzJc8m02ak9uUxZQzaYK3b-cnkuW5xV_fA",
+        // .libnest = .{
+        //     .url = "git+https://codeberg.org/Songbird-Project/libnest#d482546cfb755cb5186cc54ee87bfab66f2e2f5b",
+        //     .hash = "libnest-0.1.0-8QxpmXClAQAkyoNINVSZ3xuBN6T0CHyaeTpgT97WqdHO",
+        // },
+        .libnest = .{ .path = "../libs/libnest" },
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.12.0.tar.gz",
+            .hash = "clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5",
         },
     },
     .paths = .{

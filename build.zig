@@ -33,11 +33,11 @@ pub fn build(b: *std.Build) void {
         .config = "libnest.zon",
     });
     exe.root_module.addImport("libnest", libnest.module("libnest"));
-    const cova = b.dependency("cova", .{
+    const clap = b.dependency("clap", .{
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("cova", cova.module("cova"));
+    exe.root_module.addImport("clap", clap.module("clap"));
 
     b.installArtifact(exe);
     b.installFile("resources/nest.lua", "usr/share/nest/nest.lua");
