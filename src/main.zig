@@ -14,6 +14,7 @@ const Subcommands = enum {
     build,
     activate,
     rollback,
+    purge,
 };
 const main_parser = .{ .command = clap.parsers.enumeration(Subcommands) };
 const main_params = clap.parseParamsComptime(
@@ -23,10 +24,6 @@ const main_params = clap.parseParamsComptime(
 const MainArgs = clap.ResultEx(clap.Help, &main_params, main_parser);
 
 pub fn main(init: std.process.Init) !void {
-    // var stdout_buf: [256]u8 = undefined;
-    // var writer = Io.File.stdout().writer(init.io, &stdout_buf);
-    // const stdout = &writer.interface;
-
     var ctx: libnest.context.Context = .init(init.gpa, init.io);
     defer ctx.deinit();
 
@@ -78,6 +75,7 @@ pub fn main(init: std.process.Init) !void {
         .build => build(ctx, cfg, &iter, store_conn),
         .activate => activate(ctx, cfg, &iter, store_conn),
         .rollback => activate_gen(ctx, cfg, -1, store_conn),
+        .purge => purge(ctx, cfg, &iter, store_conn),
     };
 }
 
@@ -239,4 +237,50 @@ fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.Sto
 
     try libnest.sync.syncPackages(ctx, store_conn, providers.items);
     if (res.args.activate != 0) try activate_gen(ctx, cfg, 0, store_conn);
+}
+
+fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.StoreConn) !void {
+    const profile_id = libnest.store.profile.getId(
+        store_conn,
+        cfg.profile,
+    ) catch |err| switch (err) {
+        error.ProfileNotFound => try libnest.store.profile.new(store_conn, cfg.profile),
+        else => return err,
+    };
+
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help        Display this help and exit
+        \\<usize>
+    );
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
+        .allocator = ctx.alloc,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try diag.reportToFile(ctx.io, .stderr(), err);
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0)
+        return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
+
+    const older_than: u32 = if (res.positionals[0]) |num|
+        @intCast(num)
+    else
+        @intCast(libnest.store.generation.getCurrent(store_conn, profile_id) catch |err| switch (err) {
+            error.NoGenerations => {
+                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.profile});
+                std.process.exit(10);
+            },
+            else => return err,
+        });
+
+    try libnest.store.generation.purgeAll(
+        ctx,
+        store_conn,
+        profile_id,
+        older_than,
+    );
 }
