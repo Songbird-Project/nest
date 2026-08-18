@@ -5,6 +5,7 @@ const lua = @import("lua.zig");
 const c = lua.c;
 
 pub const Config = struct {
+    profile: []const u8,
     repos: []libnest.repo.Repo,
     packages: []const []const u8,
 
@@ -18,6 +19,8 @@ pub const Config = struct {
     }
 
     pub fn deinit(self: *Config, alloc: Allocator) void {
+        alloc.free(self.profile);
+
         for (self.repos) |repo| {
             for (repo.mirrors) |mirror| alloc.free(mirror);
             alloc.free(repo.mirrors);
@@ -36,15 +39,23 @@ fn getConfig(alloc: Allocator, state: *c.lua_State) !Config {
     _ = c.lua_getglobal(state, "nest");
     defer c.lua_settop(state, -2);
 
+    _ = c.lua_getfield(state, -1, "profile");
+    const profile = try lua.dupeString(alloc, state, -1);
+    c.lua_settop(state, -2);
+
     _ = c.lua_getfield(state, -1, "repos");
     const repos = try getRepoList(alloc, state, -1);
-    defer c.lua_settop(state, -2);
+    c.lua_settop(state, -2);
 
     _ = c.lua_getfield(state, -1, "packages");
     const packages = try lua.getStringArray(alloc, state, -1);
-    defer c.lua_settop(state, -2);
+    c.lua_settop(state, -2);
 
-    return .{ .repos = repos, .packages = packages };
+    return .{
+        .profile = profile,
+        .repos = repos,
+        .packages = packages,
+    };
 }
 
 fn getRepo(alloc: Allocator, state: *c.lua_State, table_idx: c_int) !libnest.repo.Repo {

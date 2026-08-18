@@ -6,6 +6,8 @@
 ---@field mirrors string[]
 
 ---@class Nest
+---@field profile string
 ---@field repos Repo[]
 ---@field packages string[]
+
 nest = {}
