@@ -135,11 +135,11 @@ fn activate(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.
     if (res.args.help != 0)
         return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
 
-    const gen_num = if (res.args.generation) |num| num else 0;
+    const gen_num: ?i64 = if (res.args.generation) |num| num else null;
     try activate_gen(
         ctx,
         cfg,
-        @intCast(gen_num),
+        gen_num,
         store_conn,
     );
 }
@@ -147,7 +147,7 @@ fn activate(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.
 fn activate_gen(
     ctx: libnest.context.Context,
     cfg: config.Config,
-    gen_num: i64,
+    gen_num: ?i64,
     store_conn: libnest.store.StoreConn,
 ) !void {
     const profile_id = libnest.store.profile.getId(
@@ -158,14 +158,17 @@ fn activate_gen(
         else => return err,
     };
 
-    var target = gen_num;
-    if (target == 0) target = libnest.store.generation.getLatest(store_conn, profile_id) catch |err| switch (err) {
-        error.NoGenerations => {
-            try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.profile});
-            std.process.exit(10);
-        },
-        else => return err,
-    };
+    var target: i64 = undefined;
+    if (gen_num == null)
+        target = libnest.store.generation.getLatest(store_conn, profile_id) catch |err| switch (err) {
+            error.NoGenerations => {
+                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.profile});
+                std.process.exit(10);
+            },
+            else => return err,
+        };
+
+    target = gen_num.?;
     if (target < 0) {
         const latest = libnest.store.generation.getCurrent(store_conn, profile_id) catch |err| switch (err) {
             error.NoGenerations => {
