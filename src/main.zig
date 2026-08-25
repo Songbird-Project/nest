@@ -24,20 +24,20 @@ const main_params = clap.parseParamsComptime(
 const MainArgs = clap.ResultEx(clap.Help, &main_params, main_parser);
 
 pub fn main(init: std.process.Init) !void {
-    var ctx: libnest.context.Context = .init(init.gpa, init.io);
+    const alloc = init.gpa;
+
+    var ctx: libnest.context.Context = .init(alloc, init.io, .{});
     defer ctx.deinit();
 
-    ctx.path_options = .{ .root = "./test" };
-
-    const cfg_path = try Io.Dir.path.join(init.gpa, &.{
+    const cfg_path = try Io.Dir.path.join(alloc, &.{
         ctx.path_options.root,
         ctx.path_options.config,
         "config.lua",
     });
-    defer init.gpa.free(cfg_path);
+    defer alloc.free(cfg_path);
 
     var cfg: config.Config = try .init(ctx, cfg_path);
-    defer cfg.deinit(init.gpa);
+    defer cfg.deinit(alloc);
 
     for (cfg.repos) |repo| {
         libnest.repo.RepoConn.open(&ctx, repo) catch |err| switch (err) {
@@ -46,17 +46,14 @@ pub fn main(init: std.process.Init) !void {
         };
     }
 
-    const store_conn = try libnest.store.newConn(ctx);
-    defer store_conn.close();
-
-    var iter = try init.minimal.args.iterateAllocator(init.gpa);
+    var iter = try init.minimal.args.iterateAllocator(alloc);
     defer iter.deinit();
 
     _ = iter.next();
 
     var diag = clap.Diagnostic{};
     var res = clap.parseEx(clap.Help, &main_params, main_parser, &iter, .{
-        .allocator = init.gpa,
+        .allocator = alloc,
         .diagnostic = &diag,
         .terminating_positional = 0,
     }) catch |err| {
@@ -72,10 +69,10 @@ pub fn main(init: std.process.Init) !void {
     try switch (command) {
         .help => return clap.helpToFile(init.io, .stderr(), clap.Help, &main_params, .{}),
         .sync => sync(ctx, &iter),
-        .build => build(ctx, cfg, &iter, store_conn),
-        .activate => activate(ctx, cfg, &iter, store_conn),
-        .rollback => activate_gen(ctx, cfg, -1, store_conn),
-        .purge => purge(ctx, cfg, &iter, store_conn),
+        .build => build(ctx, cfg, &iter),
+        .activate => activate(ctx, cfg, &iter),
+        .rollback => activate_gen(ctx, cfg, -1),
+        .purge => purge(ctx, cfg, &iter),
     };
 }
 
@@ -116,7 +113,7 @@ fn sync(
     }
 }
 
-fn activate(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.StoreConn) !void {
+fn activate(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
         \\-g, --generation <isize>   The generation to activate
@@ -140,7 +137,6 @@ fn activate(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.
         ctx,
         cfg,
         gen_num,
-        store_conn,
     );
 }
 
@@ -148,31 +144,30 @@ fn activate_gen(
     ctx: libnest.context.Context,
     cfg: config.Config,
     gen_num: ?i64,
-    store_conn: libnest.store.StoreConn,
 ) !void {
     const profile_id = libnest.store.profile.getId(
-        store_conn,
-        cfg.profile,
+        ctx,
+        cfg.system.profile,
     ) catch |err| switch (err) {
-        error.ProfileNotFound => try libnest.store.profile.new(store_conn, cfg.profile),
+        error.ProfileNotFound => try libnest.store.profile.new(ctx, cfg.system.profile),
         else => return err,
     };
 
-    var target: i64 = undefined;
-    if (gen_num == null)
-        target = libnest.store.generation.getLatest(store_conn, profile_id) catch |err| switch (err) {
+    var target = if (gen_num) |num|
+        num
+    else
+        libnest.store.generation.getLatest(ctx, profile_id) catch |err| switch (err) {
             error.NoGenerations => {
-                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.profile});
+                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.system.profile});
                 std.process.exit(10);
             },
             else => return err,
         };
 
-    target = gen_num.?;
     if (target < 0) {
-        const latest = libnest.store.generation.getCurrent(store_conn, profile_id) catch |err| switch (err) {
+        const latest = libnest.store.generation.getCurrent(ctx, profile_id) catch |err| switch (err) {
             error.NoGenerations => {
-                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.profile});
+                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.system.profile});
                 std.process.exit(10);
             },
             else => return err,
@@ -190,7 +185,7 @@ fn activate_gen(
     }
 
     const gen_id = libnest.store.generation.getId(
-        store_conn,
+        ctx,
         profile_id,
         target,
     ) catch |err| switch (err) {
@@ -198,16 +193,16 @@ fn activate_gen(
             try ctx.log(
                 .Error,
                 "Generation {d} for profile '{s}' not found\n",
-                .{ target, cfg.profile },
+                .{ target, cfg.system.profile },
             );
             std.process.exit(32);
         },
         else => return err,
     };
-    try libnest.store.generation.activate(ctx, store_conn, gen_id);
+    try libnest.store.generation.activate(ctx, gen_id);
 }
 
-fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.StoreConn) !void {
+fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
         \\-a, --activate   Activate the newly built generation
@@ -226,28 +221,37 @@ fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.Sto
     if (res.args.help != 0)
         return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
 
-    var providers: std.ArrayList(libnest.package.Provider) = .empty;
+    var packages: std.ArrayList([]const u8) = .empty;
+    defer packages.deinit(ctx.alloc);
+    for (cfg.system.packages) |tagged| {
+        if (tagged.is("aur") and !cfg.system.aur) continue;
+        try packages.append(ctx.alloc, tagged.item);
+    }
+    for (cfg.profiles) |profile| {
+        if (!std.mem.eql(u8, profile.name.item, cfg.system.profile)) continue;
+        for (profile.packages) |tagged| {
+            if (tagged.is("aur") and !cfg.system.aur) continue;
+            try packages.append(ctx.alloc, tagged.item);
+        }
+        break;
+    }
+
+    const pkgs = try libnest.repo.getProviderWithDepsAll(ctx, packages.items, null);
     defer {
-        for (providers.items) |provider| provider.deinit(ctx.alloc);
-        providers.deinit(ctx.alloc);
+        for (pkgs) |pkg| pkg.deinit(ctx.alloc);
+        ctx.alloc.free(pkgs);
     }
 
-    for (cfg.packages) |pkg| {
-        const pkgs = try libnest.repo.getProviderWithDeps(ctx, pkg, null);
-        defer ctx.alloc.free(pkgs);
-        try providers.appendSlice(ctx.alloc, pkgs);
-    }
-
-    try libnest.sync.syncPackages(ctx, store_conn, providers.items);
-    if (res.args.activate != 0) try activate_gen(ctx, cfg, 0, store_conn);
+    try libnest.sync.syncPackages(ctx, pkgs);
+    if (res.args.activate != 0) try activate_gen(ctx, cfg, null);
 }
 
-fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.StoreConn) !void {
+fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
     const profile_id = libnest.store.profile.getId(
-        store_conn,
-        cfg.profile,
+        ctx,
+        cfg.system.profile,
     ) catch |err| switch (err) {
-        error.ProfileNotFound => try libnest.store.profile.new(store_conn, cfg.profile),
+        error.ProfileNotFound => try libnest.store.profile.new(ctx, cfg.system.profile),
         else => return err,
     };
 
@@ -272,9 +276,9 @@ fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.Sto
     const older_than: u32 = if (res.positionals[0]) |num|
         @intCast(num)
     else
-        @intCast(libnest.store.generation.getCurrent(store_conn, profile_id) catch |err| switch (err) {
+        @intCast(libnest.store.generation.getCurrent(ctx, profile_id) catch |err| switch (err) {
             error.NoGenerations => {
-                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.profile});
+                try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.system.profile});
                 std.process.exit(10);
             },
             else => return err,
@@ -282,7 +286,6 @@ fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator, store_conn: libnest.store.Sto
 
     try libnest.store.generation.purgeAll(
         ctx,
-        store_conn,
         profile_id,
         older_than,
     );
