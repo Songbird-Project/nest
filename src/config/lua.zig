@@ -1,84 +1,116 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const libnest = @import("libnest");
-pub const c = @import("lua_c");
+const Ctx = libnest.context.Context;
+const luajit = @import("luajit");
 
-pub fn init() !*c.lua_State {
-    const L = c.luaL_newstate();
-    if (L == null) return error.LuaInitFailed;
-    c.luaL_openlibs(L);
+pub const Lua = luajit.Lua;
 
-    const lua: *c.lua_State = L.?;
-    registerAPI(lua);
+pub fn init(alloc: Allocator) !*Lua {
+    const lua = try Lua.init(alloc);
+    lua.openLibs();
+    try registerAPI(lua);
 
     return lua;
 }
 
-pub fn deinit(state: *c.lua_State) void {
-    c.lua_close(state);
-}
-
-pub fn loadFile(ctx: libnest.context.Context, state: *c.lua_State, path: []const u8) !void {
+pub fn loadFile(ctx: Ctx, lua: *Lua, path: []const u8) !void {
     const path_z = try ctx.alloc.dupeSentinel(u8, path, 0);
     defer ctx.alloc.free(path_z);
-
-    if (c.luaL_loadfilex(state, path_z.ptr, null) != 0) {
-        const err = c.lua_tolstring(state, -1, null);
-        if (err != null) {
-            try ctx.log(
-                .Error,
-                "Lua failed to load file '{s}' with error: {s}\n",
-                .{ path, std.mem.span(err) },
-            );
-        }
-        c.lua_settop(state, -2);
-        return error.LuaLoadFile;
-    }
-
-    if (c.lua_pcallk(state, 0, 0, 0, 0, null) != 0) {
-        const err = c.lua_tolstring(state, -1, null);
-        if (err != null) {
-            try ctx.log(
-                .Error,
-                "Lua runtime error in '{s}' with error: {s}\n",
-                .{ path, std.mem.span(err) },
-            );
-        }
-        c.lua_settop(state, -2);
-        return error.LuaRuntime;
-    }
+    lua.doFile(path_z) catch |err| {
+        const msg = lua.toString(-1) catch "unknown error";
+        try ctx.log(.Error, "Lua error in '{s}', {s}\n", .{ path, msg });
+        lua.pop(1);
+        return err;
+    };
 }
 
-fn registerAPI(state: *c.lua_State) void {
-    c.lua_createtable(state, 0, 16);
-
-    c.lua_setglobal(state, "nest");
+fn registerAPI(lua: *Lua) !void {
+    lua.createTable(0, 16);
+    lua.setGlobal("nest");
 }
 
-pub fn dupeString(alloc: Allocator, state: *c.lua_State, idx: c_int) ![]const u8 {
-    var len: usize = 0;
-    const ptr = c.lua_tolstring(state, idx, &len);
-    if (ptr == null) return error.LuaNotString;
-    return try alloc.dupe(u8, ptr[0..len]);
+pub fn dupeString(alloc: Allocator, lua: *Lua, idx: i32) ![]const u8 {
+    const s = try lua.toLString(idx);
+    return try alloc.dupe(u8, s);
 }
 
-pub fn getStringArray(alloc: Allocator, state: *c.lua_State, table_idx: c_int) ![][]const u8 {
-    const idx = c.lua_absindex(state, table_idx);
-    const len = c.lua_rawlen(state, idx);
+pub fn absIndex(lua: *Lua, idx: i32) i32 {
+    if (idx < 0) return lua.getTop() + idx + 1;
+    return idx;
+}
 
-    var list: std.ArrayList([]const u8) = .empty;
+pub fn withField(
+    lua: *Lua,
+    comptime T: type,
+    ctx: anytype,
+    comptime read: fn (@TypeOf(ctx), *Lua, i32) anyerror!T,
+    table_idx: i32,
+    field: [:0]const u8,
+) !T {
+    _ = lua.getField(table_idx, field);
+    defer lua.pop(1);
+    return try read(ctx, lua, -1);
+}
+
+pub fn withOptionalField(
+    lua: *Lua,
+    comptime T: type,
+    ctx: anytype,
+    comptime read: fn (@TypeOf(ctx), *Lua, i32) anyerror!T,
+    table_idx: i32,
+    field: [:0]const u8,
+    comptime makeDefault: fn (@TypeOf(ctx)) anyerror!T,
+) !T {
+    _ = lua.getField(table_idx, field);
+    defer lua.pop(1);
+    if (lua.isNil(-1)) return try makeDefault(ctx);
+    return try read(ctx, lua, -1);
+}
+
+fn hasDeinit(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct", .@"enum", .@"union", .@"opaque" => @hasDecl(T, "deinit"),
+        else => false,
+    };
+}
+
+pub fn getArray(
+    alloc: Allocator,
+    lua: *Lua,
+    comptime T: type,
+    comptime readItem: fn (Allocator, *Lua, i32) anyerror!T,
+    table_idx: i32,
+) ![]T {
+    const idx = absIndex(lua, table_idx);
+    const len = lua.getLength(idx);
+
+    var list: std.ArrayList(T) = .empty;
     errdefer {
-        for (list.items) |val| alloc.free(val);
+        for (list.items) |*item| {
+            if (comptime hasDeinit(T)) item.deinit(alloc);
+        }
         list.deinit(alloc);
     }
 
-    var i: c_int = 1;
-    while (i <= @as(c_int, @intCast(len))) : (i += 1) {
-        _ = c.lua_rawgeti(state, idx, i);
-        const val = try dupeString(alloc, state, -1);
-        c.lua_settop(state, -2);
-        try list.append(alloc, val);
+    var i: i32 = 1;
+    while (i <= len) : (i += 1) {
+        _ = lua.getTableIndexRaw(idx, i);
+        defer lua.pop(1);
+        try list.append(alloc, try readItem(alloc, lua, -1));
     }
 
     return try list.toOwnedSlice(alloc);
+}
+
+pub fn getStringArray(alloc: Allocator, lua: *Lua, table_idx: i32) ![][]const u8 {
+    return try getArray(alloc, lua, []const u8, dupeString, table_idx);
+}
+
+pub fn readBool(_: Allocator, lua: *Lua, idx: i32) !bool {
+    return lua.toBoolean(idx);
+}
+
+pub fn getString(lua: *Lua, idx: i32) ![]const u8 {
+    return try lua.toLString(idx);
 }
