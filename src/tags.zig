@@ -13,7 +13,7 @@ pub const TaggedItem = struct {
     }
 
     pub fn is(self: TaggedItem, kind: []const u8) bool {
-        if (self.tags.getKey(kind)) return true;
+        if (self.tags.getKey(kind) != null) return true;
         return false;
     }
 };
