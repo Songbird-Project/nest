@@ -4,13 +4,6 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lua_c = b.addTranslateC(.{
-        .root_source_file = b.path("lib/lua.h"),
-        .target = target,
-        .optimize = optimize,
-    });
-    lua_c.linkSystemLibrary("lua", .{});
-
     const exe = b.addExecutable(.{
         .name = "nest",
         .root_module = b.createModule(.{
@@ -18,12 +11,6 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
-            .imports = &.{
-                .{
-                    .name = "lua_c",
-                    .module = lua_c.createModule(),
-                },
-            },
         }),
         .use_llvm = true,
     });
@@ -38,6 +25,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.root_module.addImport("clap", clap.module("clap"));
+    const luajit = b.dependency("luajit", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("luajit", luajit.module("luajit"));
 
     b.installArtifact(exe);
     b.installFile("resources/nest.lua", "usr/share/nest/nest.lua");
