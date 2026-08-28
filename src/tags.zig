@@ -33,7 +33,7 @@ pub fn parse(alloc: Allocator, to_parse: []const u8) !TaggedItem {
 
     var it = std.mem.splitScalar(u8, to_parse, '`');
     while (it.next()) |tag| {
-        if (it.index.? == 0) {
+        if (it.index == null or it.index.? == 0) {
             result.item = try alloc.dupe(u8, tag);
             continue;
         }

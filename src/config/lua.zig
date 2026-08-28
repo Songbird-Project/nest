@@ -27,6 +27,9 @@ pub fn loadFile(ctx: Ctx, lua: *Lua, path: []const u8) !void {
 
 fn registerAPI(lua: *Lua) !void {
     lua.createTable(0, 16);
+    lua.setGlobal("system");
+
+    lua.newTable();
     lua.setGlobal("nest");
 }
 
@@ -65,6 +68,20 @@ pub fn withOptionalField(
     _ = lua.getField(table_idx, field);
     defer lua.pop(1);
     if (lua.isNil(-1)) return try makeDefault(ctx);
+    return try read(ctx, lua, -1);
+}
+
+pub fn withNullableField(
+    lua: *Lua,
+    comptime T: type,
+    ctx: anytype,
+    comptime read: fn (@TypeOf(ctx), *Lua, i32) anyerror!T,
+    table_idx: i32,
+    field: [:0]const u8,
+) !?T {
+    _ = lua.getField(table_idx, field);
+    defer lua.pop(1);
+    if (lua.isNil(-1)) return null;
     return try read(ctx, lua, -1);
 }
 
@@ -109,6 +126,10 @@ pub fn getStringArray(alloc: Allocator, lua: *Lua, table_idx: i32) ![][]const u8
 
 pub fn readBool(_: Allocator, lua: *Lua, idx: i32) !bool {
     return lua.toBoolean(idx);
+}
+
+pub fn readInt(_: Allocator, lua: *Lua, idx: i32) !i64 {
+    return @intCast(lua.toInteger(idx));
 }
 
 pub fn getString(lua: *Lua, idx: i32) ![]const u8 {

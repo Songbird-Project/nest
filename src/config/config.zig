@@ -1,4 +1,5 @@
 const std = @import("std");
+const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const libnest = @import("libnest");
 const Ctx = libnest.context.Context;
@@ -6,154 +7,261 @@ const luajit = @import("luajit");
 const lua = @import("lua.zig");
 const tags = @import("../tags.zig");
 
-const SystemConfig = struct {
-    aur: bool,
-    bootloader: []const u8,
-    profile: []const u8,
-    kernels: [][]const u8,
-    services: [][]const u8,
-    packages: []tags.TaggedItem,
+const pks_sets = struct {
+    const essential = [_][]const u8{
+        "bash",
+        "coreutils",
+        "filesystem",
+        "gcc-libs",
+        "glibc",
+        "gzip",
+        "shadow",
+        "util-linux",
+    };
 
-    pub fn deinit(self: *SystemConfig, alloc: Allocator) void {
-        alloc.free(self.bootloader);
-        alloc.free(self.profile);
-        for (self.kernels) |kernel| alloc.free(kernel);
-        alloc.free(self.kernels);
-        for (self.services) |service| alloc.free(service);
-        alloc.free(self.services);
-        for (self.packages) |package| alloc.free(package);
-        alloc.free(self.packages);
+    const core = [_][]const u8{
+        "archlinux-keyring",
+        "gawk",
+        "grep",
+        "sed",
+    };
+
+    const systemd = [_][]const u8{
+        "systemd",
+        "systemd-sysvcompat",
+    };
+
+    const sys_utils = [_][]const u8{
+        "file",
+        "findutils",
+        "pciutils",
+        "procps-ng",
+        "psmisc",
+    };
+
+    const net_utils = [_][]const u8{
+        "iputils",
+        "iproute2",
+        "networkmanager",
+    };
+
+    const archive_utils = [_][]const u8{
+        "bzip2",
+        "tar",
+        "xz",
+        "zstd",
+    };
+};
+
+const User = struct {
+    name: tags.TaggedItem,
+    groups: [][]const u8,
+    home: ?[]const u8,
+    pkgs: []tags.TaggedItem,
+
+    pub fn deinit(self: *User, alloc: Allocator) void {
+        self.name.deinit(alloc);
+        alloc.free(self.home);
+        for (self.pkgs) |*package| package.deinit(alloc);
+        alloc.free(self.pkgs);
     }
 };
 
-const Profile = struct {
-    name: tags.TaggedItem,
-    packages: []tags.TaggedItem,
+const Source = struct {
+    name: []const u8,
+    priority: i64,
+    mirrors: [][]const u8,
 
-    pub fn deinit(self: *Profile, alloc: Allocator) void {
+    pub fn deinit(self: *Source, alloc: Allocator) void {
         alloc.free(self.name);
-        for (self.packages) |package| alloc.free(package);
-        alloc.free(self.packages);
+        for (self.mirrors) |mirror| alloc.free(mirror);
+        alloc.free(self.mirrors);
     }
+};
+
+const Sets = struct {
+    core: bool = true,
+    systemd: bool = true,
+    sys_utils: bool = true,
+    net_utils: bool = true,
+    archive_utils: bool = true,
 };
 
 pub const Config = struct {
-    repos: []libnest.repo.Repo,
-    system: SystemConfig,
-    profiles: []Profile,
+    aur: bool,
+    arch: []const u8,
+
+    bootloader: []const u8,
+    hostname: []const u8,
+    timezone: []const u8,
+    locale: []const u8,
+
+    kernels: []tags.TaggedItem,
+    services: [][]const u8,
+    pkgs: []tags.TaggedItem,
+
+    pkg_sets: Sets,
+    sources: []Source,
+    users: []User,
 
     pub fn init(ctx: Ctx, path: []const u8) !Config {
         const state = try lua.init(ctx.alloc);
         defer state.deinit();
 
         try lua.loadFile(ctx, state, path);
-        _ = state.getGlobal("nest");
+        _ = state.getGlobal("system");
         defer state.pop(1);
 
         var config = try getConfig(ctx.alloc, state);
         errdefer config.deinit(ctx.alloc);
 
+        var sys_pkgs: std.ArrayList(tags.TaggedItem) = .empty;
+        errdefer {
+            for (sys_pkgs.items) |*pkg| pkg.deinit(ctx.alloc);
+            sys_pkgs.deinit(ctx.alloc);
+        }
+
+        for (pks_sets.essential) |pkg| try sys_pkgs.append(ctx.alloc, try tags.parse(ctx.alloc, pkg));
+        if (config.pkg_sets.core) for (pks_sets.core) |pkg| try sys_pkgs.append(
+            ctx.alloc,
+            try tags.parse(ctx.alloc, pkg),
+        );
+        if (config.pkg_sets.systemd) for (pks_sets.systemd) |pkg| try sys_pkgs.append(
+            ctx.alloc,
+            try tags.parse(ctx.alloc, pkg),
+        );
+        if (config.pkg_sets.sys_utils) for (pks_sets.sys_utils) |pkg| try sys_pkgs.append(
+            ctx.alloc,
+            try tags.parse(ctx.alloc, pkg),
+        );
+        if (config.pkg_sets.net_utils) for (pks_sets.net_utils) |pkg| try sys_pkgs.append(
+            ctx.alloc,
+            try tags.parse(ctx.alloc, pkg),
+        );
+        if (config.pkg_sets.archive_utils) for (pks_sets.archive_utils) |pkg| try sys_pkgs.append(
+            ctx.alloc,
+            try tags.parse(ctx.alloc, pkg),
+        );
+        for (config.kernels) |kernel| try sys_pkgs.append(ctx.alloc, kernel);
+
         return config;
     }
 
     pub fn deinit(self: *Config, alloc: Allocator) void {
-        for (self.repos) |repo| {
-            for (repo.mirrors) |mirror| alloc.free(mirror);
-            alloc.free(repo.mirrors);
+        for (self.sources) |*source| source.deinit(alloc);
+        alloc.free(self.sources);
 
-            alloc.free(repo.name);
-            alloc.free(repo.arch);
-        }
-        alloc.free(self.repos);
+        alloc.free(self.bootloader);
+        alloc.free(self.hostname);
+        alloc.free(self.timezone);
+        alloc.free(self.locale);
 
-        for (self.profiles) |*profile| profile.deinit(alloc);
-        alloc.free(self.profiles);
+        libnest.internal.mem.freeSlice(alloc, self.kernels);
+        libnest.internal.mem.freeSlice(alloc, self.services);
+        for (self.pkgs) |*pkg| pkg.deinit(alloc);
+        alloc.free(self.pkgs);
 
-        self.system.deinit(alloc);
+        for (self.users) |*user| user.deinit(alloc);
+        alloc.free(self.users);
+    }
+
+    pub fn sourcesToMirrors(self: *Config, alloc: Allocator) ![]libnest.repo.Repo {
+        var repos: std.ArrayList(libnest.repo.Repo) = .empty;
+        errdefer repos.deinit(alloc);
+        for (self.sources) |source| try repos.append(alloc, .{
+            .name = source.name,
+            .arch = self.arch,
+            .priority = source.priority,
+            .mirrors = source.mirrors,
+        });
+
+        return try repos.toOwnedSlice(alloc);
     }
 };
 
 fn getConfig(alloc: Allocator, state: *lua.Lua) !Config {
     return .{
-        .system = try lua.withField(state, SystemConfig, alloc, readSystemConfig, -1, "system"),
-        .profiles = try lua.withField(state, []Profile, alloc, readProfiles, -1, "profiles"),
-        .repos = try lua.withField(state, []libnest.repo.Repo, alloc, readRepos, -1, "repos"),
+        .aur = try lua.withField(state, bool, alloc, lua.readBool, -1, "aur"),
+        .arch = try withStringField(state, alloc, -1, "arch") orelse try alloc.dupe(u8, "x86_64"),
+        .bootloader = try withStringField(state, alloc, -1, "bootloader") orelse try alloc.dupe(u8, "grub"),
+        .hostname = try withStringField(state, alloc, -1, "hostname") orelse try alloc.dupe(u8, "localhost"),
+        .locale = try withStringField(state, alloc, -1, "locale") orelse try alloc.dupe(u8, "en_US.UTF-8"),
+        .timezone = try withStringField(state, alloc, -1, "timezone") orelse try alloc.dupe(u8, "UTC"),
+
+        .kernels = try lua.withNullableField(state, []tags.TaggedItem, alloc, getTaggedArray, -1, "kernels") orelse &.{},
+        .services = try withStringArrayField(state, alloc, -1, "services") orelse &.{},
+        .pkgs = try lua.withNullableField(
+            state,
+            []tags.TaggedItem,
+            alloc,
+            getTaggedArray,
+            -1,
+            "pkgs",
+        ) orelse &.{},
+
+        .pkg_sets = try lua.withNullableField(state, Sets, alloc, readSets, -1, "pkg_sets") orelse .{},
+        .sources = try lua.withNullableField(
+            state,
+            []Source,
+            alloc,
+            readSources,
+            -1,
+            "sources",
+        ) orelse &.{},
+        .users = try lua.withNullableField(
+            state,
+            []User,
+            alloc,
+            readUsers,
+            -1,
+            "users",
+        ) orelse &.{},
     };
 }
 
-fn readSystemConfig(alloc: Allocator, state: *lua.Lua, idx: i32) !SystemConfig {
+fn readSets(alloc: Allocator, state: *lua.Lua, idx: i32) !Sets {
     const table_idx = lua.absIndex(state, idx);
     return .{
-        .aur = try lua.withField(state, bool, alloc, lua.readBool, table_idx, "aur"),
-        .profile = try lua.withField(state, []const u8, alloc, lua.dupeString, table_idx, "profile"),
-        .bootloader = try lua.withOptionalField(
-            state,
-            []const u8,
-            alloc,
-            lua.dupeString,
-            table_idx,
-            "bootloader",
-            defaultBootloader,
-        ),
-        .kernels = try lua.withOptionalField(
-            state,
-            [][]const u8,
-            alloc,
-            lua.getStringArray,
-            table_idx,
-            "kernels",
-            defaultKernels,
-        ),
-        .services = try lua.withOptionalField(
-            state,
-            [][]const u8,
-            alloc,
-            lua.getStringArray,
-            table_idx,
-            "services",
-            defaultEmptyArrayAlloc,
-        ),
-        .packages = try lua.withOptionalField(
+        .core = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "core") orelse true,
+        .systemd = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "systemd") orelse true,
+        .sys_utils = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "sys_utils") orelse true,
+        .net_utils = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "net_utils") orelse true,
+        .archive_utils = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "archive_utils") orelse true,
+    };
+}
+
+fn readUsers(alloc: Allocator, state: *lua.Lua, idx: i32) ![]User {
+    return try lua.getArray(alloc, state, User, readUser, idx);
+}
+
+fn readUser(alloc: Allocator, state: *lua.Lua, idx: i32) !User {
+    const table_idx = lua.absIndex(state, idx);
+    const name = blk: {
+        _ = state.getTableIndexRaw(idx, 1);
+        defer state.pop(1);
+        break :blk try tags.parse(alloc, try lua.getString(state, -1));
+    };
+
+    return .{
+        .name = name,
+        .home = try withStringField(state, alloc, table_idx, "home") orelse try Io.Dir.path.join(alloc, &.{ "/home", name.item }),
+        .groups = try withStringArrayField(state, alloc, table_idx, "groups") orelse &.{},
+        .pkgs = try lua.withNullableField(
             state,
             []tags.TaggedItem,
             alloc,
             getTaggedArray,
             table_idx,
             "packages",
-            defaultPackages,
-        ),
+        ) orelse &.{},
     };
 }
 
-fn readProfiles(alloc: Allocator, state: *lua.Lua, idx: i32) ![]Profile {
-    return try lua.getArray(alloc, state, Profile, readProfile, idx);
+fn readSources(alloc: Allocator, state: *lua.Lua, idx: i32) ![]Source {
+    return lua.getArray(alloc, state, Source, readSource, idx);
 }
 
-fn readProfile(alloc: Allocator, state: *lua.Lua, idx: i32) !Profile {
-    const table_idx = lua.absIndex(state, idx);
-    return .{
-        .name = blk: {
-            _ = state.getTableIndexRaw(idx, 1);
-            defer state.pop(1);
-            break :blk try tags.parse(alloc, try lua.getString(state, -1));
-        },
-        .packages = try lua.withOptionalField(
-            state,
-            []tags.TaggedItem,
-            alloc,
-            getTaggedArray,
-            table_idx,
-            "packages",
-            defaultEmptyTagsArray,
-        ),
-    };
-}
-
-fn readRepos(alloc: Allocator, state: *lua.Lua, idx: i32) ![]libnest.repo.Repo {
-    return lua.getArray(alloc, state, libnest.repo.Repo, readRepo, idx);
-}
-
-fn readRepo(alloc: Allocator, state: *lua.Lua, idx: i32) !libnest.repo.Repo {
+fn readSource(alloc: Allocator, state: *lua.Lua, idx: i32) !Source {
     const table_idx = lua.absIndex(state, idx);
     return .{
         .name = blk: {
@@ -161,19 +269,42 @@ fn readRepo(alloc: Allocator, state: *lua.Lua, idx: i32) !libnest.repo.Repo {
             defer state.pop(1);
             break :blk try lua.dupeString(alloc, state, -1);
         },
-        .arch = try lua.withOptionalField(state, []const u8, alloc, lua.dupeString, table_idx, "arch", defaultArch),
-        .mirrors = try lua.withField(state, [][]const u8, alloc, lua.getStringArray, table_idx, "mirrors"),
+        .priority = try lua.withField(state, i64, alloc, lua.readInt, table_idx, "priority"),
+        .mirrors = try withStringArrayField(state, alloc, table_idx, "mirrors") orelse &.{},
     };
 }
 
-// Ctx-based bridges
-
-fn getString(ctx: Ctx, state: *lua.Lua, idx: i32) ![]const u8 {
-    return lua.dupeString(ctx.alloc, state, idx);
+// Helpers
+fn withStringField(
+    state: *lua.Lua,
+    alloc: Allocator,
+    table_idx: i32,
+    field: [:0]const u8,
+) !?[]const u8 {
+    return try lua.withNullableField(
+        state,
+        []const u8,
+        alloc,
+        lua.dupeString,
+        table_idx,
+        field,
+    );
 }
 
-fn getStringArray(ctx: Ctx, state: *lua.Lua, idx: i32) ![][]const u8 {
-    return lua.getStringArray(ctx.alloc, state, idx);
+fn withStringArrayField(
+    state: *lua.Lua,
+    alloc: Allocator,
+    table_idx: i32,
+    field: [:0]const u8,
+) !?[][]const u8 {
+    return try lua.withNullableField(
+        state,
+        [][]const u8,
+        alloc,
+        lua.getStringArray,
+        table_idx,
+        field,
+    );
 }
 
 // custom get functions
@@ -200,38 +331,4 @@ pub fn getTaggedArray(
     }
 
     return try list.toOwnedSlice(alloc);
-}
-
-// Defaults for config fields
-
-fn defaultBootloader(alloc: Allocator) ![]const u8 {
-    return try alloc.dupe(u8, "grub");
-}
-
-fn defaultKernels(alloc: Allocator) ![][]const u8 {
-    const list = try alloc.alloc([]const u8, 1);
-    list[0] = try alloc.dupe(u8, "linux");
-    return list;
-}
-
-fn defaultPackages(alloc: Allocator) ![]tags.TaggedItem {
-    const list = try alloc.alloc(tags.TaggedItem, 1);
-    list[0] = try tags.parse(alloc, "coreutils");
-    return list;
-}
-
-fn defaultArch(alloc: Allocator) ![]const u8 {
-    return try alloc.dupe(u8, "any");
-}
-
-fn defaultEmptyArray(_: Ctx) ![][]const u8 {
-    return &.{};
-}
-
-fn defaultEmptyArrayAlloc(_: Allocator) ![][]const u8 {
-    return &.{};
-}
-
-fn defaultEmptyTagsArray(_: Allocator) ![]tags.TaggedItem {
-    return &.{};
 }
