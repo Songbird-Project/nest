@@ -26,8 +26,9 @@ const MainArgs = clap.ResultEx(clap.Help, &main_params, main_parser);
 pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
 
-    var ctx: libnest.context.Context = .init(alloc, init.io, .{});
+    var ctx: Ctx = .init(alloc, init.io);
     defer ctx.deinit();
+    ctx.store = try libnest.store.open(ctx);
 
     const cfg_path = try Io.Dir.path.join(alloc, &.{
         ctx.path_options.root,
@@ -39,12 +40,7 @@ pub fn main(init: std.process.Init) !void {
     var cfg: config.Config = try .init(ctx, cfg_path);
     defer cfg.deinit(alloc);
 
-    for (cfg.repos) |repo| {
-        libnest.repo.RepoConn.open(&ctx, repo) catch |err| switch (err) {
-            error.NoMirrors => std.process.exit(57),
-            else => return err,
-        };
-    }
+    try libnest.repo.openAll(&ctx, cfg.repos);
 
     var iter = try init.minimal.args.iterateAllocator(alloc);
     defer iter.deinit();
@@ -98,18 +94,17 @@ fn sync(
     if (res.args.help != 0)
         return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
 
-    var repo_it = ctx.repos.iterator();
-    while (repo_it.next()) |repo| {
+    for (ctx.repos.items) |repo| {
         var skip = true;
         for (res.args.repos) |r| {
-            if (std.mem.eql(u8, r, repo.key_ptr.*)) {
+            if (std.mem.eql(u8, r, repo.repo.name)) {
                 skip = false;
                 break;
             }
         }
         if (res.args.repos.len == 0) skip = false;
         if (skip) continue;
-        try libnest.sync.syncRepo(ctx, repo.value_ptr.*);
+        try libnest.sync.syncRepo(ctx, repo.*);
     }
 }
 
@@ -208,6 +203,14 @@ fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
         \\-a, --activate   Activate the newly built generation
     );
 
+    const profile_id = libnest.store.profile.getId(
+        ctx,
+        cfg.system.profile,
+    ) catch |err| switch (err) {
+        error.ProfileNotFound => try libnest.store.profile.new(ctx, cfg.system.profile),
+        else => return err,
+    };
+
     var diag = clap.Diagnostic{};
     var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
         .allocator = ctx.alloc,
@@ -241,8 +244,11 @@ fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
         for (pkgs) |pkg| pkg.deinit(ctx.alloc);
         ctx.alloc.free(pkgs);
     }
-
     try libnest.sync.syncPackages(ctx, pkgs);
+
+    const gen_id = try libnest.store.generation.new(ctx, profile_id);
+    try libnest.store.generation.build(ctx, gen_id, pkgs);
+
     if (res.args.activate != 0) try activate_gen(ctx, cfg, null);
 }
 
