@@ -1,25 +1,39 @@
 ---@meta
 
----@class SystemConfig
+---@class System
+---
 ---@field aur boolean
----@field profile string
+---@field arch string
 ---@field bootloader string
+---@field hostname string
+---@field locale string
+---@field timezone string
+---
 ---@field kernels string[]
 ---@field services string[]
----@field packages string[]
+---@field pkgs string[]
+---
+---@field pkg_sets Sets
+---@field sources Repo[]
+---@field users User[]
+
+---@class Sets
+---@field core boolean
+---@field systemd boolean
+---@field sys_utils boolean
+---@field net_utils boolean
+---@field archive_utils boolean
 
 ---@class Repo
----@field [string] string
----@field arch string
+---@field [1] string Repo name
+---@field priority integer
 ---@field mirrors string[]
 
----@class Profile
----@field [string] string
----@field packages string[]
+---@class User
+---@field [1] string User name
+---@field home string
+---@field groups string[]
+---@field pkgs string[]
 
----@class Nest
----@field system SystemConfig
----@field profiles Profile[]
----@field repos Repo[]
-
-nest = {}
+---@type System
+system = {}
