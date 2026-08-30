@@ -10,9 +10,9 @@ pub const SOCKET_PATH = "/run/nest/nestd.sock";
 
 pub const Request = union(enum) {
     sync: struct { repos: []const []const u8 = &.{} },
-    build: struct { activate: bool = false },
-    activate: struct { generation: ?i64 = null },
-    purge: struct { older_than: ?u32 = null },
+    build: struct { user: ?[]const u8, activate: bool = false },
+    activate: struct { user: ?[]const u8, generation: ?i64 = null },
+    purge: struct { user: ?[]const u8, older_than: ?u32 = null },
     search: struct { query: []const u8 },
 
     pub fn isMutating(self: Request) bool {
@@ -174,6 +174,7 @@ fn dispatchBlocking(ctx: *Ctx, req: Request) !void {
     try switch (req) {
         .sync => |s| ops.sync(ctx.*, s.repos),
         .build => |b| ops.build(ctx.*, cfg, b.activate),
+        .activate => |a| ops.activate(ctx.*, cfg, a.user, a.generation),
         .search => unreachable,
         else => @panic("not ready"),
     };

@@ -60,6 +60,8 @@ pub fn main(init: std.process.Init) !void {
     try switch (command) {
         .help => return clap.helpToFile(init.io, .stderr(), clap.Help, &main_params, .{}),
         .sync => sync(io, alloc, &iter, &writer.interface),
+        .build => build(io, alloc, &iter, &writer.interface),
+        .activate => activate(io, alloc, &iter, &writer.interface),
         else => @panic("not ready"),
         // .build => build(ctx, cfg, &iter),
         // .activate => activate(ctx, cfg, &iter),
@@ -196,150 +198,58 @@ fn sync(
     try sendRequest(writer, .{ .sync = .{ .repos = res.args.repos } });
 }
 
-// fn activate(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
-//     const params = comptime clap.parseParamsComptime(
-//         \\-h, --help        Display this help and exit
-//         \\-g, --generation <isize>   The generation to activate
-//     );
-//
-//     var diag = clap.Diagnostic{};
-//     var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
-//         .allocator = ctx.alloc,
-//         .diagnostic = &diag,
-//     }) catch |err| {
-//         try diag.reportToFile(ctx.io, .stderr(), err);
-//         return err;
-//     };
-//     defer res.deinit();
-//
-//     if (res.args.help != 0)
-//         return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
-//
-//     const gen_num: ?i64 = if (res.args.generation) |num| num else null;
-//     try activate_gen(
-//         ctx,
-//         cfg,
-//         gen_num,
-//     );
-// }
-//
-// fn activate_gen(
-//     ctx: libnest.context.Context,
-//     cfg: config.Config,
-//     gen_num: ?i64,
-// ) !void {
-//     const profile_id = libnest.store.profile.getId(
-//         ctx,
-//         cfg.system.profile,
-//     ) catch |err| switch (err) {
-//         error.ProfileNotFound => try libnest.store.profile.new(ctx, cfg.system.profile),
-//         else => return err,
-//     };
-//
-//     var target = if (gen_num) |num|
-//         num
-//     else
-//         libnest.store.generation.getLatest(ctx, profile_id) catch |err| switch (err) {
-//             error.NoGenerations => {
-//                 try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.system.profile});
-//                 std.process.exit(10);
-//             },
-//             else => return err,
-//         };
-//
-//     if (target < 0) {
-//         const latest = libnest.store.generation.getCurrent(ctx, profile_id) catch |err| switch (err) {
-//             error.NoGenerations => {
-//                 try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.system.profile});
-//                 std.process.exit(10);
-//             },
-//             else => return err,
-//         };
-//         target = latest + target;
-//     }
-//
-//     if (target < 0) {
-//         try ctx.log(
-//             .Error,
-//             "Cannot rollback to generation {d}, negative generations are not possible\n",
-//             .{target},
-//         );
-//         std.process.exit(11);
-//     }
-//
-//     const gen_id = libnest.store.generation.getId(
-//         ctx,
-//         profile_id,
-//         target,
-//     ) catch |err| switch (err) {
-//         error.GenerationNotFound => {
-//             try ctx.log(
-//                 .Error,
-//                 "Generation {d} for profile '{s}' not found\n",
-//                 .{ target, cfg.system.profile },
-//             );
-//             std.process.exit(32);
-//         },
-//         else => return err,
-//     };
-//     try libnest.store.generation.activate(ctx, gen_id);
-// }
-//
-// fn build(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
-//     const params = comptime clap.parseParamsComptime(
-//         \\-h, --help        Display this help and exit
-//         \\-a, --activate   Activate the newly built generation
-//     );
-//
-//     const profile_id = libnest.store.profile.getId(
-//         ctx,
-//         cfg.system.profile,
-//     ) catch |err| switch (err) {
-//         error.ProfileNotFound => try libnest.store.profile.new(ctx, cfg.system.profile),
-//         else => return err,
-//     };
-//
-//     var diag = clap.Diagnostic{};
-//     var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
-//         .allocator = ctx.alloc,
-//         .diagnostic = &diag,
-//     }) catch |err| {
-//         try diag.reportToFile(ctx.io, .stderr(), err);
-//         return err;
-//     };
-//     defer res.deinit();
-//
-//     if (res.args.help != 0)
-//         return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
-//
-//     var packages: std.ArrayList([]const u8) = .empty;
-//     defer packages.deinit(ctx.alloc);
-//     for (cfg.system.packages) |tagged| {
-//         if (tagged.is("aur") and !cfg.system.aur) continue;
-//         try packages.append(ctx.alloc, tagged.item);
-//     }
-//     for (cfg.profiles) |profile| {
-//         if (!std.mem.eql(u8, profile.name.item, cfg.system.profile)) continue;
-//         for (profile.packages) |tagged| {
-//             if (tagged.is("aur") and !cfg.system.aur) continue;
-//             try packages.append(ctx.alloc, tagged.item);
-//         }
-//         break;
-//     }
-//
-//     const pkgs = try libnest.repo.getProviderWithDepsAll(ctx, packages.items, null);
-//     defer {
-//         for (pkgs) |pkg| pkg.deinit(ctx.alloc);
-//         ctx.alloc.free(pkgs);
-//     }
-//     try libnest.sync.syncPackages(ctx, pkgs);
-//
-//     const gen_id = try libnest.store.generation.new(ctx, profile_id);
-//     try libnest.store.generation.build(ctx, gen_id, pkgs);
-//
-//     if (res.args.activate != 0) try activate_gen(ctx, cfg, null);
-// }
-//
+fn activate(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help        Display this help and exit
+        \\-g, --generation <isize>   The generation to activate
+        \\<str>
+    );
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
+        .allocator = alloc,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try diag.reportToFile(io, .stderr(), err);
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0)
+        return clap.helpToFile(io, .stderr(), clap.Help, &params, .{});
+
+    const gen_num = if (res.args.generation) |num| num else null;
+    const user = res.positionals[0];
+
+    try sendRequest(writer, .{ .activate = .{ .user = user, .generation = gen_num } });
+}
+
+fn build(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help        Display this help and exit
+        \\-a, --activate   Activate the newly built generation
+        \\<str>
+    );
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
+        .allocator = alloc,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try diag.reportToFile(io, .stderr(), err);
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0)
+        return clap.helpToFile(io, .stderr(), clap.Help, &params, .{});
+
+    const should_activate = res.args.activate != 0;
+    const user = res.positionals[0];
+
+    try sendRequest(writer, .{ .build = .{ .user = user, .activate = should_activate } });
+}
+
 // fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
 //     const profile_id = libnest.store.profile.getId(
 //         ctx,
