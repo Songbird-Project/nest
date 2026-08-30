@@ -56,7 +56,7 @@ const pks_sets = struct {
 const User = struct {
     name: tags.TaggedItem,
     groups: [][]const u8,
-    home: ?[]const u8,
+    home: []const u8,
     pkgs: []tags.TaggedItem,
 
     pub fn deinit(self: *User, alloc: Allocator) void {
@@ -156,7 +156,8 @@ pub const Config = struct {
         alloc.free(self.timezone);
         alloc.free(self.locale);
 
-        libnest.internal.mem.freeSlice(alloc, self.kernels);
+        for (self.kernels) |*kernel| kernel.deinit(alloc);
+        alloc.free(self.kernels);
         libnest.internal.mem.freeSlice(alloc, self.services);
         for (self.pkgs) |*pkg| pkg.deinit(alloc);
         alloc.free(self.pkgs);
