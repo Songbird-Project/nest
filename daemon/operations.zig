@@ -3,6 +3,7 @@ const libnest = @import("libnest");
 const Ctx = libnest.context.Context;
 const config = @import("config/config.zig");
 const Cfg = config.Config;
+const sets = @import("sets.zig");
 
 fn getGenForActivation(ctx: Ctx, profile_id: i64, gen_num: ?i64) !i64 {
     var target = if (gen_num) |num|
@@ -114,6 +115,20 @@ pub fn build(ctx: Ctx, cfg: Cfg, should_activate: bool) !void {
     defer packages.deinit(ctx.alloc);
     for (cfg.pkgs) |tagged| {
         if (tagged.is("aur") and !cfg.aur) continue;
+        if (tagged.is("set")) {
+            if (@hasDecl(sets.pkg, tagged.item)) {
+                try packages.appendSlice(ctx.alloc, @field(sets.pkg, tagged.item));
+                continue;
+            } else if (@hasDecl(sets.driver, tagged.item)) {
+                try packages.appendSlice(ctx.alloc, @field(sets.driver, tagged.item));
+                continue;
+            } else if (@hasDecl(sets.firmware, tagged.item)) {
+                try packages.appendSlice(ctx.alloc, @field(sets.firmware, tagged.item));
+                continue;
+            } else {
+                ctx.log(.Warn, "Unrecognized package set: {s}\n", .{tagged.item});
+            }
+        }
         try packages.append(ctx.alloc, tagged.item);
     }
 
