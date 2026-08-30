@@ -169,6 +169,7 @@ fn dispatchBlocking(ctx: *Ctx, req: Request) !void {
     const mirrors = try cfg.sourcesToMirrors(alloc);
     defer alloc.free(mirrors);
     try libnest.repo.openAll(ctx, mirrors);
+    defer ctx.closeRepoConns();
 
     try switch (req) {
         .sync => |s| ops.sync(ctx.*, s.repos),
