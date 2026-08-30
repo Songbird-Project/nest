@@ -51,6 +51,37 @@ const pks_sets = struct {
         "xz",
         "zstd",
     };
+
+    const driver = struct {
+        const amd = [_][]const u8{
+            "amd-ucode",
+            "linux-firmware-amdgpu",
+            "linux-firmware-radeon",
+        };
+
+        const intel = [_][]const u8{
+            "intel-ucode",
+            "linux-firmware-intel",
+        };
+
+        const nvidia = [_][]const u8{
+            "linux-firmware-nvidia",
+        };
+    };
+
+    const firmware = struct {
+        const wireless = [_][]const u8{
+            "linux-firmware-atheros",
+            "linux-firmware-broadcom",
+            "linux-firmware-mediatek",
+            "linux-firmware-realtek",
+        };
+
+        const misc = [_][]const u8{
+            "linux-firmware-cirrus",
+            "linux-firmware-other",
+        };
+    };
 };
 
 const User = struct {
@@ -85,6 +116,17 @@ const Sets = struct {
     sys_utils: bool = true,
     net_utils: bool = true,
     archive_utils: bool = true,
+
+    driver: struct {
+        amd: bool = false,
+        intel: bool = false,
+        nvidia: bool = false,
+    } = .{},
+
+    firmware: struct {
+        wireless: bool = false,
+        misc: bool = false,
+    } = .{},
 };
 
 pub const Config = struct {
@@ -93,7 +135,7 @@ pub const Config = struct {
 
     bootloader: []const u8,
     hostname: []const u8,
-    timezone: []const u8,
+    tz: []const u8,
     locale: []const u8,
 
     kernels: []tags.TaggedItem,
@@ -103,6 +145,13 @@ pub const Config = struct {
     pkg_sets: Sets,
     sources: []Source,
     users: []User,
+
+    fn appendPkgSet(alloc: Allocator, should: bool, set: []const []const u8, to: *std.ArrayList(tags.TaggedItem)) !void {
+        if (should) for (set) |pkg| try to.append(
+            alloc,
+            try tags.parse(alloc, pkg),
+        );
+    }
 
     pub fn init(ctx: Ctx, path: []const u8) !Config {
         const state = try lua.init(ctx.alloc);
@@ -121,27 +170,21 @@ pub const Config = struct {
             sys_pkgs.deinit(ctx.alloc);
         }
 
-        for (pks_sets.essential) |pkg| try sys_pkgs.append(ctx.alloc, try tags.parse(ctx.alloc, pkg));
-        if (config.pkg_sets.core) for (pks_sets.core) |pkg| try sys_pkgs.append(
-            ctx.alloc,
-            try tags.parse(ctx.alloc, pkg),
-        );
-        if (config.pkg_sets.systemd) for (pks_sets.systemd) |pkg| try sys_pkgs.append(
-            ctx.alloc,
-            try tags.parse(ctx.alloc, pkg),
-        );
-        if (config.pkg_sets.sys_utils) for (pks_sets.sys_utils) |pkg| try sys_pkgs.append(
-            ctx.alloc,
-            try tags.parse(ctx.alloc, pkg),
-        );
-        if (config.pkg_sets.net_utils) for (pks_sets.net_utils) |pkg| try sys_pkgs.append(
-            ctx.alloc,
-            try tags.parse(ctx.alloc, pkg),
-        );
-        if (config.pkg_sets.archive_utils) for (pks_sets.archive_utils) |pkg| try sys_pkgs.append(
-            ctx.alloc,
-            try tags.parse(ctx.alloc, pkg),
-        );
+        const sets = [_]struct { should: bool, pkgs: []const []const u8 }{
+            .{ .should = true, .pkgs = &pks_sets.essential },
+            .{ .should = config.pkg_sets.core, .pkgs = &pks_sets.core },
+            .{ .should = config.pkg_sets.systemd, .pkgs = &pks_sets.systemd },
+            .{ .should = config.pkg_sets.sys_utils, .pkgs = &pks_sets.sys_utils },
+            .{ .should = config.pkg_sets.net_utils, .pkgs = &pks_sets.net_utils },
+            .{ .should = config.pkg_sets.archive_utils, .pkgs = &pks_sets.archive_utils },
+            .{ .should = config.pkg_sets.driver.amd, .pkgs = &pks_sets.driver.amd },
+            .{ .should = config.pkg_sets.driver.intel, .pkgs = &pks_sets.driver.intel },
+            .{ .should = config.pkg_sets.driver.nvidia, .pkgs = &pks_sets.driver.nvidia },
+            .{ .should = config.pkg_sets.firmware.wireless, .pkgs = &pks_sets.firmware.wireless },
+            .{ .should = config.pkg_sets.firmware.misc, .pkgs = &pks_sets.firmware.misc },
+        };
+        for (sets) |set| try appendPkgSet(ctx.alloc, set.should, set.pkgs, &sys_pkgs);
+
         for (config.kernels) |kernel| try sys_pkgs.append(ctx.alloc, kernel);
 
         return config;
@@ -153,7 +196,7 @@ pub const Config = struct {
 
         alloc.free(self.bootloader);
         alloc.free(self.hostname);
-        alloc.free(self.timezone);
+        alloc.free(self.tz);
         alloc.free(self.locale);
 
         for (self.kernels) |*kernel| kernel.deinit(alloc);
@@ -187,7 +230,7 @@ fn getConfig(alloc: Allocator, state: *lua.Lua) !Config {
         .bootloader = try withStringField(state, alloc, -1, "bootloader") orelse try alloc.dupe(u8, "grub"),
         .hostname = try withStringField(state, alloc, -1, "hostname") orelse try alloc.dupe(u8, "localhost"),
         .locale = try withStringField(state, alloc, -1, "locale") orelse try alloc.dupe(u8, "en_US.UTF-8"),
-        .timezone = try withStringField(state, alloc, -1, "timezone") orelse try alloc.dupe(u8, "UTC"),
+        .tz = try withStringField(state, alloc, -1, "tz") orelse try alloc.dupe(u8, "UTC"),
 
         .kernels = try lua.withNullableField(state, []tags.TaggedItem, alloc, getTaggedArray, -1, "kernels") orelse &.{},
         .services = try withStringArrayField(state, alloc, -1, "services") orelse &.{},
@@ -228,6 +271,39 @@ fn readSets(alloc: Allocator, state: *lua.Lua, idx: i32) !Sets {
         .sys_utils = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "sys_utils") orelse true,
         .net_utils = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "net_utils") orelse true,
         .archive_utils = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "archive_utils") orelse true,
+        .driver = try lua.withNullableField(
+            state,
+            @FieldType(Sets, "driver"),
+            alloc,
+            readDriverSets,
+            table_idx,
+            "drivers",
+        ) orelse .{},
+        .firmware = try lua.withNullableField(
+            state,
+            @FieldType(Sets, "firmware"),
+            alloc,
+            readFirmwareSets,
+            table_idx,
+            "firmware",
+        ) orelse .{},
+    };
+}
+
+fn readDriverSets(alloc: Allocator, state: *lua.Lua, idx: i32) !@FieldType(Sets, "driver") {
+    const table_idx = lua.absIndex(state, idx);
+    return .{
+        .amd = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "amd") orelse false,
+        .intel = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "intel") orelse false,
+        .nvidia = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "nvidia") orelse false,
+    };
+}
+
+fn readFirmwareSets(alloc: Allocator, state: *lua.Lua, idx: i32) !@FieldType(Sets, "firmware") {
+    const table_idx = lua.absIndex(state, idx);
+    return .{
+        .wireless = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "wireless") orelse false,
+        .misc = try lua.withNullableField(state, bool, alloc, lua.readBool, table_idx, "misc") orelse false,
     };
 }
 
