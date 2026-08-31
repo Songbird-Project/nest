@@ -145,7 +145,7 @@ pub fn build(ctx: Ctx, cfg: Cfg, should_activate: bool) !void {
     if (should_activate) try activateGen(ctx, null, null);
 }
 
-fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
+pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
     if (user != null and std.mem.eql(u8, user.?, "all")) {
         for (cfg.users) |us| {
             const profile_id = try getOrCreateProfile(ctx, us.name.item);

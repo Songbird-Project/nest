@@ -175,8 +175,8 @@ fn dispatchBlocking(ctx: *Ctx, req: Request) !void {
         .sync => |s| ops.sync(ctx.*, s.repos),
         .build => |b| ops.build(ctx.*, cfg, b.activate),
         .activate => |a| ops.activate(ctx.*, cfg, a.user, a.generation),
+        .purge => |p| ops.purge(ctx.*, cfg, p.user, p.older_than),
         .search => unreachable,
-        else => @panic("not ready"),
     };
 }
 
