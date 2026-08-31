@@ -62,10 +62,8 @@ pub fn main(init: std.process.Init) !void {
         .sync => sync(io, alloc, &iter, &writer.interface),
         .build => build(io, alloc, &iter, &writer.interface),
         .activate => activate(io, alloc, &iter, &writer.interface),
+        .rollback => rollback(io, alloc, &iter, &writer.interface),
         else => @panic("not ready"),
-        // .build => build(ctx, cfg, &iter),
-        // .activate => activate(ctx, cfg, &iter),
-        // .rollback => activate_gen(ctx, cfg, -1),
         // .purge => purge(ctx, cfg, &iter),
     };
 
@@ -224,6 +222,30 @@ fn activate(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) 
     try sendRequest(writer, .{ .activate = .{ .user = user, .generation = gen_num } });
 }
 
+fn rollback(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help        Display this help and exit
+        \\<str>
+    );
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
+        .allocator = alloc,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try diag.reportToFile(io, .stderr(), err);
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0)
+        return clap.helpToFile(io, .stderr(), clap.Help, &params, .{});
+
+    const user = res.positionals[0];
+
+    try sendRequest(writer, .{ .activate = .{ .user = user, .generation = -1 } });
+}
+
 fn build(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
@@ -250,47 +272,28 @@ fn build(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !vo
     try sendRequest(writer, .{ .build = .{ .user = user, .activate = should_activate } });
 }
 
-// fn purge(ctx: Ctx, cfg: Cfg, iter: *Args.Iterator) !void {
-//     const profile_id = libnest.store.profile.getId(
-//         ctx,
-//         cfg.system.profile,
-//     ) catch |err| switch (err) {
-//         error.ProfileNotFound => try libnest.store.profile.new(ctx, cfg.system.profile),
-//         else => return err,
-//     };
-//
-//     const params = comptime clap.parseParamsComptime(
-//         \\-h, --help        Display this help and exit
-//         \\<usize>
-//     );
-//
-//     var diag = clap.Diagnostic{};
-//     var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
-//         .allocator = ctx.alloc,
-//         .diagnostic = &diag,
-//     }) catch |err| {
-//         try diag.reportToFile(ctx.io, .stderr(), err);
-//         return err;
-//     };
-//     defer res.deinit();
-//
-//     if (res.args.help != 0)
-//         return clap.helpToFile(ctx.io, .stderr(), clap.Help, &params, .{});
-//
-//     const older_than: u32 = if (res.positionals[0]) |num|
-//         @intCast(num)
-//     else
-//         @intCast(libnest.store.generation.getCurrent(ctx, profile_id) catch |err| switch (err) {
-//             error.NoGenerations => {
-//                 try ctx.log(.Error, "No generations found for profile '{s}'\n", .{cfg.system.profile});
-//                 std.process.exit(10);
-//             },
-//             else => return err,
-//         });
-//
-//     try libnest.store.generation.purgeAll(
-//         ctx,
-//         profile_id,
-//         older_than,
-//     );
-// }
+fn purge(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help        Display this help and exit
+        \\<str>
+        \\<usize>
+    );
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parseEx(clap.Help, &params, clap.parsers.default, iter, .{
+        .allocator = alloc,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try diag.reportToFile(io, .stderr(), err);
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0)
+        return clap.helpToFile(io, .stderr(), clap.Help, &params, .{});
+
+    const user = res.positionals[0];
+    const older_than = res.positionals[1];
+
+    try sendRequest(writer, .{ .purge = .{ .user = user, .older_than = older_than } });
+}
