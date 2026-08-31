@@ -10,6 +10,7 @@ const sets = @import("../sets.zig");
 
 const User = struct {
     name: tags.TaggedItem,
+    shell: tags.TaggedItem,
     groups: [][]const u8,
     home: []const u8,
     pkgs: []tags.TaggedItem,
@@ -167,6 +168,7 @@ fn readUser(alloc: Allocator, state: *lua.Lua, idx: i32) !User {
     return .{
         .name = name,
         .home = try withStringField(state, alloc, table_idx, "home") orelse try Io.Dir.path.join(alloc, &.{ "/home", name.item }),
+        .shell = try lua.withNullableField(state, tags.TaggedItem, alloc, getTagged, table_idx, "shell") orelse try tags.parse(alloc, "bash"),
         .groups = try withStringArrayField(state, alloc, table_idx, "groups") orelse &.{},
         .pkgs = try lua.withNullableField(
             state,
@@ -253,4 +255,8 @@ pub fn getTaggedArray(
     }
 
     return try list.toOwnedSlice(alloc);
+}
+
+pub fn getTagged(alloc: Allocator, state: *lua.Lua, idx: i32) !tags.TaggedItem {
+    return try tags.parse(alloc, try state.toLString(idx));
 }
