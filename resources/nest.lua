@@ -13,16 +13,8 @@
 ---@field services string[]
 ---@field pkgs string[]
 ---
----@field pkg_sets Sets
 ---@field sources Repo[]
 ---@field users User[]
-
----@class Sets
----@field core boolean
----@field systemd boolean
----@field sys_utils boolean
----@field net_utils boolean
----@field archive_utils boolean
 
 ---@class Repo
 ---@field [1] string Repo name
@@ -32,6 +24,7 @@
 ---@class User
 ---@field [1] string User name
 ---@field home string
+---@field shell string
 ---@field groups string[]
 ---@field pkgs string[]
 
