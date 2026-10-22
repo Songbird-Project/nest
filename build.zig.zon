@@ -13,9 +13,9 @@
             .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.12.0.tar.gz",
             .hash = "clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5",
         },
-        .luajit = .{
-            .url = "git+https://github.com/sackosoft/zig-luajit#11887ffa5b03788c05d23e64f2aafb20b645570a",
-            .hash = "luajit-3.0.0-nMGF0vfCAwBfUsknnnrxFWEDZ4G6sOgppH6DGzWgn7fV",
+        .zlua = .{
+            .url = "git+https://github.com/natecraddock/ziglua?ref=0.7.0#9ae39fa50b1ab8427d35f963216116d7bff1e584",
+            .hash = "zlua-0.1.0-hGRpC1mUBQCNQf4CnmRTM4I7gxE3YpCvZ-p2EarlcyER",
         },
     },
     .paths = .{
