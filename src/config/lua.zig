@@ -1,4 +1,5 @@
 const std = @import("std");
+const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const libnest = @import("libnest");
 const Ctx = libnest.context.Context;
@@ -6,10 +7,10 @@ const luajit = @import("luajit");
 
 pub const Lua = luajit.Lua;
 
-pub fn init(alloc: Allocator) !*Lua {
-    const lua = try Lua.init(alloc);
+pub fn init(ctx: Ctx) !*Lua {
+    const lua = try Lua.init(ctx.alloc);
     lua.openLibs();
-    try registerAPI(lua);
+    try registerAPI(&ctx, lua);
 
     return lua;
 }
@@ -25,11 +26,16 @@ pub fn loadFile(ctx: Ctx, lua: *Lua, path: []const u8) !void {
     };
 }
 
-fn registerAPI(lua: *Lua) !void {
-    lua.createTable(0, 16);
+fn registerAPI(ctx: *const Ctx, lua: *Lua) !void {
+    lua.newTable();
     lua.setGlobal("system");
 
     lua.newTable();
+
+    lua.pushLightUserdata(@constCast(ctx));
+    lua.pushCClosure(luaReadLines, 1);
+    lua.setField(-2, "read_lines");
+
     lua.setGlobal("nest");
 }
 
@@ -134,4 +140,48 @@ pub fn readInt(_: Allocator, lua: *Lua, idx: i32) !i64 {
 
 pub fn getString(lua: *Lua, idx: i32) ![]const u8 {
     return try lua.toLString(idx);
+}
+
+// Exposed API
+fn luaReadLines(lua: *Lua) callconv(.c) c_int {
+    const raw = lua.toUserdata(-10002 - 1).?;
+    const ctx: *const Ctx = @ptrCast(@alignCast(raw));
+
+    const io = ctx.io;
+
+    lua.newTable();
+
+    const path = lua.toLString(1) catch return 1;
+
+    const file = Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+        ctx.log(.Error, "Failed to read file '{s}': {s}\n", .{ path, @errorName(err) }) catch return 1;
+        return 1;
+    };
+    defer file.close(io);
+    var rbuf: [4096]u8 = undefined;
+    var file_reader = file.reader(io, &rbuf);
+    const reader = &file_reader.interface;
+
+    var lbuf: [512]u8 = undefined;
+    var idx: i32 = 1;
+    while (true) {
+        var lwriter = Io.Writer.fixed(&lbuf);
+        const bytes_read = reader.streamDelimiter(&lwriter, '\n') catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => {
+                ctx.log(.Error, "Failed to read line in file '{s}': {s}\n", .{ path, @errorName(err) }) catch return 1;
+                return 1;
+            },
+        };
+        if (bytes_read == 0 and lwriter.buffered().len == 0) break;
+
+        const line = std.mem.trim(u8, lwriter.buffered(), " \t\r");
+        if (line.len == 0) continue;
+
+        lua.pushLString(line);
+        lua.setTableIndexRaw(-2, idx);
+        idx += 1;
+    }
+
+    return 1;
 }

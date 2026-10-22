@@ -1,26 +1,26 @@
 const std = @import("std");
+const Alloc = std.mem.Allocator;
 const Io = std.Io;
 const libnest = @import("libnest");
 const Ctx = libnest.context.Context;
-const config = @import("config/config.zig");
+const config = @import("../config/config.zig");
 const Cfg = config.Config;
-const ops = @import("operations.zig");
+const blocking = @import("blocking.zig");
 
 pub const SOCKET_PATH = "/run/nest/nestd.sock";
 
-pub const Request = union(enum) {
+pub const RequestBody = union(enum) {
     sync: struct { repos: []const []const u8 = &.{} },
     build: struct { user: ?[]const u8, activate: bool = false },
     activate: struct { user: ?[]const u8, generation: ?i64 = null },
     purge: struct { user: ?[]const u8, older_than: ?u32 = null },
     search: struct { query: []const u8 },
+};
 
-    pub fn isMutating(self: Request) bool {
-        return switch (self) {
-            .sync, .build, .activate, .purge => true,
-            .search => false,
-        };
-    }
+pub const Request = struct {
+    cfg_path: ?[]const u8 = null,
+    root: ?[]const u8 = null,
+    body: RequestBody,
 };
 
 pub const Response = union(enum) {
@@ -50,8 +50,7 @@ const ActiveConn = struct {
 
 var active_conn: ActiveConn = undefined;
 
-pub fn main(init: std.process.Init) !void {
-    const alloc = init.gpa;
+pub fn start(alloc: Alloc) !void {
     var threaded_io: Io.Threaded = .init(alloc, .{});
     defer threaded_io.deinit();
     const io = threaded_io.io();
@@ -153,17 +152,16 @@ fn dispatch(io: Io, ctx: *Ctx, req: Request, writer: *Io.Writer) !void {
 fn dispatchBlocking(ctx: *Ctx, req: Request) !void {
     const alloc = ctx.alloc;
 
-    const cfg_path = try Io.Dir.path.join(alloc, &.{
+    const have_cfg = if (req.cfg_path) true else false;
+    const cfg_path = req.cfg_path orelse try Io.Dir.path.join(alloc, &.{
         ctx.path_options.root,
         ctx.path_options.config,
         "config.lua",
     });
-    defer alloc.free(cfg_path);
+    defer if (!have_cfg) alloc.free(cfg_path);
 
-    var cfg: Cfg = try .init(ctx.*, cfg_path);
-    defer cfg.deinit(alloc);
+    var cfg: Cfg = req.cfg orelse try .init(ctx.*, cfg_path);
 
-    ctx.select_cb = selectCb;
     ctx.log_cb = logCb;
 
     const mirrors = try cfg.sourcesToMirrors(alloc);
@@ -171,11 +169,11 @@ fn dispatchBlocking(ctx: *Ctx, req: Request) !void {
     try libnest.repo.openAll(ctx, mirrors);
     defer ctx.closeRepoConns();
 
-    try switch (req) {
-        .sync => |s| ops.sync(ctx.*, s.repos),
-        .build => |b| ops.build(ctx.*, cfg, b.activate),
-        .activate => |a| ops.activate(ctx.*, cfg, a.user, a.generation),
-        .purge => |p| ops.purge(ctx.*, cfg, p.user, p.older_than),
+    try switch (req.body) {
+        .sync => |s| blocking.sync(ctx.*, s.repos),
+        .build => |b| blocking.build(ctx.*, cfg, b.activate),
+        .activate => |a| blocking.activate(ctx.*, cfg, a.user, a.generation),
+        .purge => |p| blocking.purge(ctx.*, cfg, p.user, p.older_than),
         .search => unreachable,
     };
 }
@@ -195,24 +193,9 @@ fn worker(io: Io, daemon: *Daemon) !void {
     }
 }
 
-fn logCb(io: Io, level: libnest.context.LogLevel, msg: []const u8) anyerror!void {
-    _ = io;
+fn logCb(_: Io, level: libnest.context.LogLevel, msg: []const u8) anyerror!void {
     var stringify: std.json.Stringify = .{ .writer = active_conn.writer };
     try stringify.write(Response{ .log = .{ .level = @tagName(level), .msg = msg } });
     try active_conn.writer.writeByte('\n');
     try active_conn.writer.flush();
-}
-
-fn selectCb(io: Io, count: usize) !usize {
-    _ = io;
-    var stringify: std.json.Stringify = .{ .writer = active_conn.writer };
-    try stringify.write(Response{ .select = .{ .count = count } });
-    try active_conn.writer.writeByte('\n');
-    try active_conn.writer.flush();
-
-    const line = try active_conn.reader.takeDelimiter('\n') orelse return error.ConnectionClosed;
-    const Reply = struct { selected: usize };
-    const parsed = try std.json.parseFromSlice(Reply, active_conn.alloc, line, .{});
-    defer parsed.deinit();
-    return parsed.value.selected;
 }

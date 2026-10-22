@@ -7,6 +7,7 @@ const luajit = @import("luajit");
 const lua = @import("lua.zig");
 const tags = @import("../tags.zig");
 const sets = @import("../sets.zig");
+const pragma = @import("pragma.zig");
 
 const User = struct {
     name: tags.TaggedItem,
@@ -35,7 +36,13 @@ const Source = struct {
     }
 };
 
+const Options = struct {
+    system: bool = false,
+};
+
 pub const Config = struct {
+    opts: Options = .{},
+
     aur: bool,
     arch: []const u8,
 
@@ -59,7 +66,7 @@ pub const Config = struct {
     }
 
     pub fn init(ctx: Ctx, path: []const u8) !Config {
-        const state = try lua.init(ctx.alloc);
+        const state = try lua.init(ctx);
         defer state.deinit();
 
         try lua.loadFile(ctx, state, path);
@@ -77,6 +84,8 @@ pub const Config = struct {
 
         try appendPkgSet(ctx.alloc, &sets.pkg.essential, &sys_pkgs);
         for (config.kernels) |kernel| try sys_pkgs.append(ctx.alloc, kernel);
+
+        try pragma.applyAll(ctx.io, ctx.alloc, &config, path);
 
         return config;
     }

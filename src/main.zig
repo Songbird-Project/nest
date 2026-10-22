@@ -1,8 +1,9 @@
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
+const zlua = @import("zlua");
 const clap = @import("clap");
-const daemon = @import("daemon");
+const daemon = @import("daemon/daemon.zig");
 
 const Args = std.process.Args;
 
@@ -16,6 +17,7 @@ const Subcommands = enum {
 };
 const main_parser = .{ .command = clap.parsers.enumeration(Subcommands) };
 const main_params = clap.parseParamsComptime(
+    \\    --daemon      Start nest in daemon mode
     \\-h, --help        Display this help and exit
     \\<command>
 );
@@ -47,6 +49,9 @@ pub fn main(init: std.process.Init) !void {
     if (res.args.help != 0)
         return clap.helpToFile(init.io, .stderr(), clap.Help, &main_params, .{});
 
+    if (res.args.daemon != 0)
+        daemon.start(init);
+
     const addr = try Io.net.UnixAddress.init(daemon.SOCKET_PATH);
     const stream = try addr.connect(io);
     defer stream.close(io);
@@ -67,7 +72,7 @@ pub fn main(init: std.process.Init) !void {
         // .purge => purge(ctx, cfg, &iter),
     };
 
-    try recieveResponse(io, alloc, &reader.interface, &writer.interface);
+    try recieveResponse(io, alloc, &reader.interface);
 }
 
 fn sendRequest(writer: *Io.Writer, req: daemon.Request) !void {
@@ -77,7 +82,7 @@ fn sendRequest(writer: *Io.Writer, req: daemon.Request) !void {
     try writer.flush();
 }
 
-fn recieveResponse(io: Io, alloc: Allocator, reader: *Io.Reader, writer: *Io.Writer) !void {
+fn recieveResponse(io: Io, alloc: Allocator, reader: *Io.Reader) !void {
     while (true) {
         const line = try reader.takeDelimiter('\n') orelse return error.ConnClosed;
 
@@ -86,13 +91,6 @@ fn recieveResponse(io: Io, alloc: Allocator, reader: *Io.Reader, writer: *Io.Wri
 
         switch (parsed.value) {
             .log => |l| try log(io, l.level, l.msg),
-            .select => |s| {
-                const idx = try select(io, s.count);
-                var stringify: std.json.Stringify = .{ .writer = writer };
-                try stringify.write(.{ .index = idx });
-                try writer.writeByte('\n');
-                try writer.flush();
-            },
             .done => |d| {
                 if (std.mem.eql(u8, d.status, "error")) {
                     std.log.err("nestd: {s}", .{d.err orelse "unknown error"});
@@ -131,42 +129,6 @@ fn log(io: Io, level: []const u8, msg: []const u8) !void {
     try writer.writeAll(prefix);
     try writer.writeAll(msg);
     try writer.flush();
-}
-
-fn select(io: Io, items: usize) !usize {
-    if (items == 0) return 0;
-
-    var stdin_buf: [16]u8 = undefined;
-    const stdin_file = Io.File.stdin();
-
-    var stdin_reader = stdin_file.reader(io, &stdin_buf);
-    const stdin = &stdin_reader.interface;
-
-    var stdout_buf: [256]u8 = undefined;
-    const file = Io.File.stdout();
-    var writer = file.writer(io, &stdout_buf);
-    const w = &writer.interface;
-
-    var buf: [16]u8 = undefined;
-    var input = Io.Writer.fixed(&buf);
-
-    while (true) {
-        try w.print("Select [1-{d}]: ", .{items});
-        try w.flush();
-
-        input.end = 0;
-
-        _ = try stdin.streamDelimiter(&input, '\n');
-        const trimmed = std.mem.trim(u8, input.buffered(), " \t\r\n");
-
-        const val = std.fmt.parseInt(usize, trimmed, 10) catch {
-            _ = try stdin.discardRemaining();
-            continue;
-        };
-
-        if (val == 0 or val > items) continue;
-        return val - 1;
-    }
 }
 
 fn sync(

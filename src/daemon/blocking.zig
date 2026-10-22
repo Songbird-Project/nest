@@ -105,6 +105,26 @@ pub fn activate(ctx: Ctx, cfg: Cfg, user: ?[]const u8, generation: ?i64) !void {
     }
 }
 
+fn appendSet(
+    ctx: Ctx,
+    packages: *std.ArrayList([]const u8),
+    name: []const u8,
+) !bool {
+    inline for (.{ sets.pkg, sets.driver, sets.firmware }) |set| {
+        inline for (comptime std.meta.declarations(set)) |decl| {
+            const field = @field(set, decl.name);
+            const info = @typeInfo(@TypeOf(field));
+
+            if (info != .array or info.array.child != []const u8) continue;
+            if (std.mem.eql(u8, decl.name, name)) {
+                try packages.appendSlice(ctx.alloc, &field);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 pub fn build(ctx: Ctx, cfg: Cfg, should_activate: bool) !void {
     const profile_id = libnest.store.profile.getId(ctx, "system") catch |err| switch (err) {
         error.ProfileNotFound => try libnest.store.profile.new(ctx, "system"),
@@ -115,20 +135,13 @@ pub fn build(ctx: Ctx, cfg: Cfg, should_activate: bool) !void {
     defer packages.deinit(ctx.alloc);
     for (cfg.pkgs) |tagged| {
         if (tagged.is("aur") and !cfg.aur) continue;
+
         if (tagged.is("set")) {
-            if (@hasDecl(sets.pkg, tagged.item)) {
-                try packages.appendSlice(ctx.alloc, @field(sets.pkg, tagged.item));
-                continue;
-            } else if (@hasDecl(sets.driver, tagged.item)) {
-                try packages.appendSlice(ctx.alloc, @field(sets.driver, tagged.item));
-                continue;
-            } else if (@hasDecl(sets.firmware, tagged.item)) {
-                try packages.appendSlice(ctx.alloc, @field(sets.firmware, tagged.item));
-                continue;
-            } else {
-                ctx.log(.Warn, "Unrecognized package set: {s}\n", .{tagged.item});
-            }
+            if (try appendSet(ctx, &packages, tagged.item)) continue;
+            try ctx.log(.Warn, "Unrecognized package set: {s}\n", .{tagged.item});
+            continue;
         }
+
         try packages.append(ctx.alloc, tagged.item);
     }
 
@@ -149,7 +162,7 @@ pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
     if (user != null and std.mem.eql(u8, user.?, "all")) {
         for (cfg.users) |us| {
             const profile_id = try getOrCreateProfile(ctx, us.name.item);
-            const older_than: u32 = if (older) |num| num else libnest.store.generation.getCurrent(
+            const older_than: u32 = if (older) |num| num else @intCast(libnest.store.generation.getCurrent(
                 ctx,
                 profile_id,
             ) catch |err| switch (err) {
@@ -158,7 +171,7 @@ pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
                     std.process.exit(10);
                 },
                 else => return err,
-            };
+            });
 
             try libnest.store.generation.purgeAll(
                 ctx,
@@ -166,8 +179,8 @@ pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
                 older_than,
             );
         }
-        const profile_id = try getOrCreateProfile("system");
-        const older_than: u32 = if (older) |num| num else libnest.store.generation.getCurrent(
+        const profile_id = try getOrCreateProfile(ctx, "system");
+        const older_than: u32 = if (older) |num| num else @intCast(libnest.store.generation.getCurrent(
             ctx,
             profile_id,
         ) catch |err| switch (err) {
@@ -176,7 +189,7 @@ pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
                 std.process.exit(10);
             },
             else => return err,
-        };
+        });
 
         try libnest.store.generation.purgeAll(
             ctx,
@@ -185,7 +198,7 @@ pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
         );
     } else {
         const profile_id = try getOrCreateProfile(ctx, user orelse "system");
-        const older_than: u32 = if (older) |num| num else libnest.store.generation.getCurrent(
+        const older_than: u32 = if (older) |num| num else @intCast(libnest.store.generation.getCurrent(
             ctx,
             profile_id,
         ) catch |err| switch (err) {
@@ -194,7 +207,7 @@ pub fn purge(ctx: Ctx, cfg: Cfg, user: ?[]const u8, older: ?u32) !void {
                 std.process.exit(10);
             },
             else => return err,
-        };
+        });
 
         try libnest.store.generation.purgeAll(
             ctx,
