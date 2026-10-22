@@ -12,7 +12,6 @@ pub fn build(b: *std.Build) void {
     const zlua = b.dependency("zlua", .{
         .target = target,
         .optimize = optimize,
-        .lang = .lua54,
         .shared = true,
     });
     const clap = b.dependency("clap", .{ .target = target, .optimize = optimize });
