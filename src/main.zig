@@ -50,7 +50,7 @@ pub fn main(init: std.process.Init) !void {
         return clap.helpToFile(init.io, .stderr(), clap.Help, &main_params, .{});
 
     if (res.args.daemon != 0)
-        daemon.start(init);
+        return try daemon.start(init);
 
     const addr = try Io.net.UnixAddress.init(daemon.SOCKET_PATH);
     const stream = try addr.connect(io);
@@ -139,6 +139,10 @@ fn sync(
 ) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
+        \\    --root        Specify an alternative root (default: / or <PWD> in ISO mode)
+        \\-c, --config-path Specify an alternative config path (default: <ROOT>/etc/nest or <PWD> in ISO mode)
+        \\    --store-path  Specify an alternative store path (default: <NEST_DIR>/.store or <PWD>/.store in ISO mode)
+        \\    --cache-path  Specify an alternative cache (default: <NEST_DIR>/.cache or <PWD>/.cache in ISO mode)
         \\-r, --repos <str>...   Only sync the given repos
     );
 
@@ -161,6 +165,9 @@ fn sync(
 fn activate(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
+        \\    --root        Specify an alternative root (default: / or <PWD> in ISO mode)
+        \\    --store-path  Specify an alternative store path (default: <NEST_DIR>/.store or <PWD>/.store in ISO mode)
+        \\    --cache-path  Specify an alternative cache (default: <NEST_DIR>/.cache or <PWD>/.cache in ISO mode)
         \\-g, --generation <isize>   The generation to activate
         \\<str>
     );
@@ -187,6 +194,9 @@ fn activate(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) 
 fn rollback(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
+        \\    --root        Specify an alternative root (default: / or <PWD> in ISO mode)
+        \\    --store-path  Specify an alternative store path (default: <NEST_DIR>/.store or <PWD>/.store in ISO mode)
+        \\    --cache-path  Specify an alternative cache (default: <NEST_DIR>/.cache or <PWD>/.cache in ISO mode)
         \\<str>
     );
 
@@ -211,7 +221,10 @@ fn rollback(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) 
 fn build(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
-        \\-a, --activate   Activate the newly built generation
+        \\    --root        Specify an alternative root (default: / or <PWD> in ISO mode)
+        \\-c, --config-path Specify an alternative config path (default: <ROOT>/etc/nest or <PWD> in ISO mode)
+        \\    --store-path  Specify an alternative store path (default: <NEST_DIR>/.store or <PWD>/.store in ISO mode)
+        \\    --cache-path  Specify an alternative cache (default: <NEST_DIR>/.cache or <PWD>/.cache in ISO mode)
         \\<str>
     );
 
@@ -237,6 +250,9 @@ fn build(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !vo
 fn purge(io: Io, alloc: Allocator, iter: *Args.Iterator, writer: *Io.Writer) !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help        Display this help and exit
+        \\    --root        Specify an alternative root (default: / or <PWD> in ISO mode)
+        \\    --store-path  Specify an alternative store path (default: <NEST_DIR>/.store or <PWD>/.store in ISO mode)
+        \\    --cache-path  Specify an alternative cache (default: <NEST_DIR>/.cache or <PWD>/.cache in ISO mode)
         \\<str>
         \\<usize>
     );
