@@ -1,7 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
-const zlua = @import("zlua");
 const clap = @import("clap");
 const daemon = @import("daemon/daemon.zig");
 
