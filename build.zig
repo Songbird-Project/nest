@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 Songbird Project
+//
+// SPDX-License-Identifier: BSD-3-Clause
+
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
