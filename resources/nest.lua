@@ -37,10 +37,16 @@ function nest.readlines(path) end
 ---@field enabled? boolean
 ---@field source? string
 
+---@class nest.Source.System
+---@field mirrors? string[]
+
 ---@class nest.Sources
 ---@field aur? nest.Source.Aur
----@field pkgbuild? nest.Source.Pkgbuild
----@field repo table<string, nest.Source>
+---@field luabuild? nest.Source.Luabuild
+---@field system? nest.Source.System
+---@field galaxy? nest.Source
+---@field lib32? nest.Source
+---@field custom table<string, nest.Source>
 
 ---@class nest.Pkgs
 ---@field repo? string[]

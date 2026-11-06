@@ -25,9 +25,12 @@ pub const Pkg = struct {
     pkgs: Pkgs = .{},
 
     pub const Toggle = struct { enabled: bool = true };
-    pub const Pkgbuild = struct {
+    pub const Luabuild = struct {
         enabled: bool = false,
-        source: ?[]const u8 = null,
+        source: []const u8 = "luabuild",
+    };
+    pub const SystemSource = struct {
+        mirrors: []const []const u8 = &.{},
     };
     pub const Source = struct {
         enabled: bool = true,
@@ -36,8 +39,11 @@ pub const Pkg = struct {
     };
     pub const Sources = struct {
         aur: Toggle = .{ .enabled = false },
-        pkgbuild: ?Pkgbuild = null,
-        repo: std.json.ArrayHashMap(Source) = .{},
+        luabuild: Luabuild = .{},
+        system: SystemSource = .{},
+        galaxy: Source = .{},
+        lib32: Source = .{ .enabled = false },
+        custom: std.json.ArrayHashMap(Source) = .{},
     };
     pub const Pkgs = struct {
         repo: []const []const u8 = &.{},
