@@ -30,10 +30,10 @@ function nest.readlines(path) end
 ---@field priority? integer
 ---@field mirrors? string[]
 
----@class nest.Source.Aur
----@field enabled? boolean
+-- ---@class nest.Source.Aur
+-- ---@field enabled? boolean
 
----@class nest.Source.Pkgbuild
+---@class nest.Source.Luabuild
 ---@field enabled? boolean
 ---@field source? string
 
@@ -41,7 +41,7 @@ function nest.readlines(path) end
 ---@field mirrors? string[]
 
 ---@class nest.Sources
----@field aur? nest.Source.Aur
+-- ---@field aur? nest.Source.Aur
 ---@field luabuild? nest.Source.Luabuild
 ---@field system? nest.Source.System
 ---@field galaxy? nest.Source
@@ -54,8 +54,8 @@ function nest.readlines(path) end
 ---@field pkgbuild? string[]
 
 ---@class nest.Pkg
----@field sources nest.Sources
----@field pkgs nest.Pkgs
+---@field sources? nest.Sources
+---@field pkgs? nest.Pkgs
 
 ---@type nest.Pkg
 pkg = {}
@@ -69,7 +69,7 @@ pkg = {}
 ---@field users? table<string, string[]>
 
 ---@class nest.Services
----@field manager "systemd" Other init systems are planned for support such as dinit and openrc
+---@field manager "dinit" Other init systems are planned for support such as runit and openrc
 ---@field enable? nest.SvScopes
 ---@field disable? nest.SvScopes
 ---@field mask? nest.SvScopes
@@ -89,7 +89,7 @@ pkg = {}
 -- system.boot --
 -----------------
 
----@alias nest.Bootloader "grub" Other bootloaders are planned for support such as limine and systemd-boot
+---@alias nest.Bootloader "grub" Other bootloaders are planned for support such as limine
 
 ---@class nest.Boot
 ---@field loader? nest.Bootloader
